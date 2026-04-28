@@ -3,7 +3,7 @@
   'use strict';
   const { useState, useEffect, useRef, useMemo } = React;
   // charts.jsx에서 등록한 컴포넌트들을 가져옴
-  const { RadarChart, SequenceChart, AngularChart, EnergyFlow, LaybackMeter } = window;
+  const { RadarChart, SequenceChart, AngularChart, EnergyFlow, LaybackMeter, IntegratedKineticDiagram } = window;
 
 /* ---------------- THEME ---------------- */
 function useTheme() {
@@ -1645,10 +1645,10 @@ function SinglePitcherView({ p }) {
         <CoreIssuePanel p={p}/>
       </div>
 
-      {/* Expected Velocity — 체력/메카닉스 기대 구속 + 훈련 방향 */}
-      <div style={{ marginBottom: 24 }}>
+      {/* Expected Velocity Panel — 향후 활성화 (현재 v0.1 prototype, n=4 baseline로 미완성) */}
+      {/* <div style={{ marginBottom: 24 }}>
         <ExpectedVelocityPanel p={p}/>
-      </div>
+      </div> */}
 
       {/* Section: Physical */}
       <SectionBlock num="01" title="Velocity Drivers · 구속 관련 체력 요소"
@@ -1708,12 +1708,15 @@ function SinglePitcherView({ p }) {
           <div className="panel">
             <div className="panel-head">
               <div>
-                <div className="kicker">Energy Transfer</div>
+                <div className="kicker">Energy Transfer · 5편 논문 정밀 지표</div>
                 <h3>에너지 전달과 누수</h3>
-                <div className="sub">· ETI = 분절 간 에너지 전달 비율 · 1.0이면 손실 없음</div>
+                <div className="sub">· 통합 마네킹: 키네틱 체인 에너지 흐름 + 정밀 지표 (elbow load, cocking power, transfer KE T→A, leg asymmetry)</div>
               </div>
             </div>
-            <EnergyFlow energy={p.energy}/>
+            {IntegratedKineticDiagram
+              ? <IntegratedKineticDiagram energy={p.energy} precision={p.precision}/>
+              : <EnergyFlow energy={p.energy}/>
+            }
             <div className="chart-caption">{p.energy.comment}</div>
           </div>
           <div className="panel">
@@ -1732,7 +1735,7 @@ function SinglePitcherView({ p }) {
               <div>
                 <div className="kicker">Peak Angular Velocity</div>
                 <h3>분절별 최대 회전 속도</h3>
-                <div className="sub">· 프로 범위: 골반 580–640 · 몸통 800–900 · 상완 1450–1600 °/s</div>
+                <div className="sub">· 한국 우수 고1 기준: 골반 500–600 · 몸통 750–900 · 상완 1350–1550 °/s</div>
               </div>
             </div>
             <AngularChart angular={p.angular}/>
@@ -1775,6 +1778,22 @@ function SinglePitcherView({ p }) {
       {/* Section: Command Profile (7대 요인) */}
       <SectionBlock num="03" title="Command Mechanics · 제구 관련 메카닉스"
         sub="· 10구 메카닉 일관성 + 제구력 7대 요인 평가 · Uplift Labs 실측">
+        {/* 5 Domain Radar — 풋컨택트·시퀀싱·파워·릴리즈 포지션·릴리즈 타이밍 일관성 */}
+        {p.command?.radarData && p.command.radarData.length > 0 && (
+          <div className="panel" style={{ marginBottom: 16 }}>
+            <div className="panel-head">
+              <div>
+                <div className="kicker">5 Domain Consistency</div>
+                <h3>제구력 5대 영역 일관성 레이더</h3>
+                <div className="sub">· 풋 컨택트 · 시퀀싱 · 파워 아웃풋 · 릴리즈 포지션 · 릴리즈 타이밍 — 외곽으로 갈수록 우수 (50점 미만 = 보강 필요)</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+              <RadarChart data={p.command.radarData}/>
+            </div>
+            <div className="chart-caption">{p.command.note}</div>
+          </div>
+        )}
         <CommandProfilePanel cmd={p.command} energy={p.energy} layback={p.layback} factors={p.factors}/>
       </SectionBlock>
 

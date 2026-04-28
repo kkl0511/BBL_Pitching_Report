@@ -15,10 +15,17 @@
   'use strict';
 
   // 참조값 (Report 7 data.js와 동일)
+  // ─────────────────────────────────────────────────────────────
+  // Reference baseline (한국 대학생/고교생 우수 투수 기준)
+  // 출처: Aguinaldo 2015 (high school college level), Fleisig 1999, Naito 2014
+  // 주: MLB elite는 pelvis 600+/trunk 950+/arm 1900+이지만,
+  //     한국 고교/대학 우수 투수는 더 낮은 분포에 있어 baseline을 낮춤.
+  //     현재 시스템은 한국 학생 투수 분석용이므로 이 기준을 사용.
+  // ─────────────────────────────────────────────────────────────
   const REF = {
-    pelvis:  { low: 580, high: 640 },
-    trunk:   { low: 800, high: 900 },
-    arm:     { low: 1450, high: 1600 },
+    pelvis:  { low: 500, high: 600 },   // 한국 우수 고1: 500-600 °/s
+    trunk:   { low: 750, high: 900 },   // 한국 우수 고1: 750-900 °/s
+    arm:     { low: 1350, high: 1550 }, // 한국 우수 고1: 1350-1550 °/s
     layback: { low: 160, high: 180 },
     etiTA:   { leakBelow: 0.85, ideal: 1.0 },
   };
@@ -359,6 +366,29 @@
     const estStrikePct = overallScore === 4 ? 75 : overallScore === 3 ? 65 : overallScore === 2 ? 58 : overallScore === 1 ? 50 : null;
     const estPlateSd = overallScore === 4 ? 14 : overallScore === 3 ? 18 : overallScore === 2 ? 22 : overallScore === 1 ? 28 : null;
 
+    // ─── 5 Domain Radar Data (files report.jsx toCommandRadarData 포팅) ───
+    // 각 도메인 score(0~4)를 inverted 값(5-score)으로 변환 후 RadarChart에 전달
+    // RadarChart는 lo=50, hi=80 기준, value < lo = 미흡, value > hi = 우수
+    // domains의 grade를 0-100 점수로 변환: A→90, B→70, C→50, D→30, N/A→null
+    const gradeRadarValue = { A: 90, B: 70, C: 50, D: 30, 'N/A': null };
+    const radarData = domains.map(d => {
+      // score 기반으로 더 정밀한 점수 계산
+      let radarVal;
+      if (d.score == null || d.score === 0) {
+        radarVal = gradeRadarValue[d.grade] ?? null;
+      } else {
+        // score 0~4 범위를 30~95 점수로 매핑 (0→30, 4→95)
+        radarVal = 30 + (d.score / 4) * 65;
+      }
+      return {
+        label: d.name,
+        sub: d.icon ? `${d.icon} ${d.grade || '—'}` : (d.desc || ''),
+        value: radarVal,
+        lo: 50, hi: 80,
+        display: d.grade === 'N/A' ? '—' : d.grade
+      };
+    });
+
     // note — domain별 등급 요약
     const domainGrades = domains.map(d => d.grade).join('/');
     const validCount = domains.filter(d => d.grade && d.grade !== 'N/A' && d.grade !== 'D').length;
@@ -373,7 +403,9 @@
       measured,
       note,
       isDemo: true,  // 추정값임을 표시
-      nTrials: bioCmd.nUsedForCommand || 10
+      nTrials: bioCmd.nUsedForCommand || 10,
+      radarData,     // 5 Domain RadarChart용
+      domains        // 원본 도메인 정보 (subs 포함)
     };
   }
 
@@ -435,6 +467,25 @@
       etiTA: r2(etiTA) != null ? etiTA : 0,
       leakPct: leakPct,
       comment: buildEnergyComment(etiPT, etiTA, leakPct)
+    };
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // Precision 데이터 (5편 논문 정밀 지표 — IntegratedKineticDiagram용)
+  //   - elbowEff:        Sabick 2004 elbow load efficiency
+  //   - cockPowerWPerKg: Naito 2014 cocking phase arm power
+  //   - transferTA_KE:   Aguinaldo & Escamilla 2019 trunk → arm KE transfer
+  //   - legAsymmetry:    Crotin et al. 2014 stride/pivot leg symmetry
+  //   - peakPivotHipVel / peakStrideHipVel:  pivot vs stride hip joint vel
+  // ═════════════════════════════════════════════════════════════════
+  function buildPrecision(sm) {
+    return {
+      elbowEff:         sm.elbowLoadEfficiency?.mean ?? null,
+      cockPowerWPerKg:  sm.cockingPhaseArmPowerWPerKg?.mean ?? null,
+      transferTA_KE:    sm.transferTA_KE?.mean ?? null,
+      legAsymmetry:     sm.legAsymmetryRatio?.mean ?? null,
+      peakPivotHipVel:  sm.peakPivotHipVel?.mean ?? null,
+      peakStrideHipVel: sm.peakStrideHipVel?.mean ?? null
     };
   }
 
@@ -750,6 +801,7 @@
     const layback  = buildLayback(sm);
     const command  = buildCommand(bio.command, sm);
     const factors  = buildFactors(bio.factors, sm, bio.faultRates);
+    const precision = buildPrecision(sm);
 
     // 강점/약점/플래그 (트레이닝/드릴은 비활성화 — 빈 배열)
     const strengths  = buildStrengths(phys, sm, bio.energy, bio.command);
@@ -773,6 +825,7 @@
       layback,
       command,
       factors,
+      precision,
       strengths,
       weaknesses,
       flags,

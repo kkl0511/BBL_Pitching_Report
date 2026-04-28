@@ -885,6 +885,516 @@ function EnergyFlow({ energy }) {
   );
 }
 
+// ----------------- Integrated Kinetic Diagram (files v8 통합 마네킹) -----------------
+// 한 마네킹에 전신 키네틱 체인 에너지 흐름 + 5편 논문 기반 정밀 지표(elbow load eff, cocking arm power,
+// transfer KE T→A, leg asymmetry, peak hip vel)를 모두 표시. dashboard에서 EnergyFlow 대체용으로 사용 가능.
+// IIFE 닫기 직전에서 window.IntegratedKineticDiagram 으로 export됨.
+function IntegratedKineticDiagram({ energy, precision }) {
+  if (!energy && !precision) return null;
+  const E = energy || {};
+  const P = precision || {};
+  const { etiPT, etiTA, leakPct } = E;
+
+  // 3-tier color logic from EnergyFlow
+  function stageStatus(eti, eliteThr, midThr) {
+    if (eti == null) return { tier: 'none', color: '#475569', dark: '#1e293b', label: '미측정' };
+    if (eti >= eliteThr) return { tier: 'elite', color: '#10b981', dark: '#047857', label: '엘리트' };
+    if (eti >= midThr)   return { tier: 'mid',   color: '#f59e0b', dark: '#b45309', label: '양호 (개선여지)' };
+    return                       { tier: 'leak',  color: '#ef4444', dark: '#7f1d1d', label: '누수 감지' };
+  }
+  const ptC = stageStatus(etiPT, 1.5, 1.3);
+  const taC = stageStatus(etiTA, 1.7, 1.4);
+  const ptLeak = ptC.tier === 'leak';
+  const taLeak = taC.tier === 'leak';
+  const uid = useMemo(() => Math.random().toString(36).slice(2, 8), []);
+
+  // Precision metrics
+  const {
+    elbowEff,
+    cockPowerWPerKg,
+    transferTA_KE,
+    legAsymmetry,
+    peakPivotHipVel,
+    peakStrideHipVel
+  } = P;
+
+  const toneLowerBetter = (val, [eliteT, normalT, midT]) =>
+    val == null ? 'none' : val < eliteT ? 'elite' : val < normalT ? 'normal' : val < midT ? 'mid' : 'bad';
+  const toneHigherBetter = (val, [eliteT, normalT, midT]) =>
+    val == null ? 'none' : val >= eliteT ? 'elite' : val >= normalT ? 'normal' : val >= midT ? 'mid' : 'bad';
+  const TONES = {
+    elite:  { color: '#10b981', text: '엘리트' },
+    normal: { color: '#94a3b8', text: '정상' },
+    mid:    { color: '#f59e0b', text: '주의' },
+    bad:    { color: '#ef4444', text: '부족' },
+    none:   { color: '#475569', text: '미측정' }
+  };
+  const elbowTone    = toneLowerBetter(elbowEff,        [2.5, 3.5, 4.0]);
+  const shoulderTone = toneHigherBetter(cockPowerWPerKg, [30, 22, 15]);
+  const trunkTone    = toneHigherBetter(transferTA_KE,   [2.5, 1.7, 1.0]);
+  const asymTone     = legAsymmetry == null ? 'none'
+                     : (legAsymmetry >= 1.0 && legAsymmetry <= 2.5) ? 'normal'
+                     : 'mid';
+
+  // Keypoints — EnergyFlow base pose with throwing arm in late-cocking/MER
+  // (matches Cornell #22 reference photo): elbow at head height, forearm
+  // pointing UP, hand/ball above head with laid-back wrist.
+  const K = {
+    head:     [470, 115],
+    neck:     [478, 153],
+    trunkC:   [482, 224],   // v78 — trunk center (mid-spine, between pelvis and shoulders) for energy path
+    rShoulder:[520, 177],
+    lShoulder:[438, 173],
+    rElbow:   [580, 177],   // horizontal upper arm (level with shoulder)
+    rWrist:   [565, 100],   // forearm UP from elbow (laid back)
+    ball:     [540, 80],    // ball just past wrist, above head
+    lElbow:   [410, 215],   // glove arm bent, elbow tucked
+    lWrist:   [455, 195],   // glove hand UP near chest level
+    pelvisR:  [506, 295],
+    pelvisL:  [446, 295],
+    pelvisC:  [476, 295],
+    rKnee:    [556, 373],
+    rAnkle:   [620, 427],
+    lKnee:    [370, 399],
+    lAnkle:   [310, 487],   // stride foot landed forward (extended)
+    lToe:     [268, 489],
+    rToe:     [658, 435]
+  };
+
+  // v77 — Full kinetic chain energy path with BOTH legs:
+  //   Pivot leg (back/push-off foot): rAnkle → rKnee → pelvisC
+  //   Stride leg (front/landing foot): lAnkle → lKnee → pelvisC
+  //   Both legs contribute to ground reaction force → pelvis rotation.
+  //   From pelvis, single path: pelvis → trunk → shoulder → elbow → wrist → ball
+  //
+  // Biomechanical rationale (Aguinaldo 2007, Howenstein 2019):
+  //   - Pivot leg drives initial pelvis rotation via push-off + ground reaction
+  //   - Stride leg blocks at FC, decelerating pelvis to drive trunk rotation
+  //   - Both feet act as the kinetic chain's primary energy source
+  const energyPathPivotLeg = `
+    M ${K.rAnkle[0]} ${K.rAnkle[1]}
+    L ${K.rKnee[0]} ${K.rKnee[1]}
+    L ${K.pelvisC[0]} ${K.pelvisC[1]}
+  `;
+  const energyPathStrideLeg = `
+    M ${K.lAnkle[0]} ${K.lAnkle[1]}
+    L ${K.lKnee[0]} ${K.lKnee[1]}
+    L ${K.pelvisC[0]} ${K.pelvisC[1]}
+  `;
+  const energyPathUpperChain = `
+    M ${K.pelvisC[0]} ${K.pelvisC[1]}
+    L ${K.trunkC[0]} ${K.trunkC[1]}
+    L ${K.rShoulder[0]} ${K.rShoulder[1]}
+    L ${K.rElbow[0]} ${K.rElbow[1]}
+    L ${K.rWrist[0]} ${K.rWrist[1]}
+    L ${K.ball[0]} ${K.ball[1]}
+  `;
+
+  return (
+    <div className="energy-silhouette">
+      <svg viewBox="0 0 800 560" className="silhouette-svg" role="img" aria-label="키네틱 체인 통합 마네킹">
+        <defs>
+          <linearGradient id={`ik-bg-${uid}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#0b1220" stopOpacity="0"/>
+            <stop offset="1" stopColor="#0b1220" stopOpacity="0.35"/>
+          </linearGradient>
+          <linearGradient id={`ik-energy-${uid}`} gradientUnits="userSpaceOnUse"
+            x1={K.lAnkle[0]} y1={K.lAnkle[1]} x2={K.ball[0]} y2={K.ball[1]}>
+            <stop offset="0%"   stopColor="#22d3ee"/>
+            <stop offset="28%"  stopColor={ptC.color}/>
+            <stop offset="55%"  stopColor={taC.color}/>
+            <stop offset="85%"  stopColor={taC.color}/>
+            <stop offset="100%" stopColor={taC.dark}/>
+          </linearGradient>
+          {/* v77 — Pivot leg gradient (back foot → pelvis): cyan ground reaction → ptC color at pelvis */}
+          <linearGradient id={`ik-energy-pivot-${uid}`} gradientUnits="userSpaceOnUse"
+            x1={K.rAnkle[0]} y1={K.rAnkle[1]} x2={K.pelvisC[0]} y2={K.pelvisC[1]}>
+            <stop offset="0%"   stopColor="#22d3ee"/>
+            <stop offset="100%" stopColor={ptC.color}/>
+          </linearGradient>
+          {/* v77 — Stride leg gradient (front foot → pelvis): cyan ground reaction → ptC color */}
+          <linearGradient id={`ik-energy-stride-${uid}`} gradientUnits="userSpaceOnUse"
+            x1={K.lAnkle[0]} y1={K.lAnkle[1]} x2={K.pelvisC[0]} y2={K.pelvisC[1]}>
+            <stop offset="0%"   stopColor="#22d3ee"/>
+            <stop offset="100%" stopColor={ptC.color}/>
+          </linearGradient>
+          {/* v77 — Upper chain gradient (pelvis → ball): ptC at pelvis through taC at arm */}
+          <linearGradient id={`ik-energy-upper-${uid}`} gradientUnits="userSpaceOnUse"
+            x1={K.pelvisC[0]} y1={K.pelvisC[1]} x2={K.ball[0]} y2={K.ball[1]}>
+            <stop offset="0%"   stopColor={ptC.color}/>
+            <stop offset="40%"  stopColor={taC.color}/>
+            <stop offset="85%"  stopColor={taC.color}/>
+            <stop offset="100%" stopColor={taC.dark}/>
+          </linearGradient>
+          <filter id={`ik-glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id={`ik-leak-${uid}`}>
+            <stop offset="0%" stopColor="#fee2e2" stopOpacity="0.95"/>
+            <stop offset="40%" stopColor="#ef4444" stopOpacity="0.7"/>
+            <stop offset="100%" stopColor="#7f1d1d" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id={`ik-mSphere-${uid}`} cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stopColor="#f1f5f9"/>
+            <stop offset="45%" stopColor="#cbd5e1"/>
+            <stop offset="85%" stopColor="#64748b"/>
+            <stop offset="100%" stopColor="#334155"/>
+          </radialGradient>
+          <linearGradient id={`ik-mLimb-${uid}`} x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#e2e8f0"/>
+            <stop offset="50%" stopColor="#94a3b8"/>
+            <stop offset="100%" stopColor="#475569"/>
+          </linearGradient>
+          <linearGradient id={`ik-mLimbD-${uid}`} x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#94a3b8"/>
+            <stop offset="55%" stopColor="#64748b"/>
+            <stop offset="100%" stopColor="#1e293b"/>
+          </linearGradient>
+          <linearGradient id={`ik-mTorso-${uid}`} x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#e2e8f0"/>
+            <stop offset="40%" stopColor="#94a3b8"/>
+            <stop offset="100%" stopColor="#334155"/>
+          </linearGradient>
+          <radialGradient id={`ik-mJoint-${uid}`} cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stopColor="#f8fafc"/>
+            <stop offset="60%" stopColor="#94a3b8"/>
+            <stop offset="100%" stopColor="#334155"/>
+          </radialGradient>
+          <radialGradient id={`ik-aoShadow-${uid}`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#000" stopOpacity="0.45"/>
+            <stop offset="100%" stopColor="#000" stopOpacity="0"/>
+          </radialGradient>
+          <marker id={`ik-arrow-${uid}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 Z" fill="currentColor"/>
+          </marker>
+          <path id={`ik-armPath-${uid}`}
+                d={`M ${K.rShoulder[0]} ${K.rShoulder[1]} L ${K.rElbow[0]} ${K.rElbow[1]} L ${K.rWrist[0]} ${K.rWrist[1]} L ${K.ball[0]} ${K.ball[1]}`}/>
+        </defs>
+
+        {/* Background + ground + foot shadow */}
+        <rect x="0" y="0" width="800" height="560" fill={`url(#ik-bg-${uid})`}/>
+        <line x1="40" y1="498" x2="760" y2="498" stroke="#2a3a5a" strokeWidth="1.5" strokeDasharray="3 6"/>
+        <ellipse cx={(K.lAnkle[0] + K.rAnkle[0]) / 2} cy="508" rx="180" ry="12" fill={`url(#ik-aoShadow-${uid})`}/>
+
+        {/* === BODY SILHOUETTE === */}
+        {/* Glove-side arm (left, dark) */}
+        <g>
+          <line x1={K.lShoulder[0]} y1={K.lShoulder[1]} x2={K.lElbow[0]} y2={K.lElbow[1]}
+                stroke={`url(#ik-mLimbD-${uid})`} strokeWidth="22" strokeLinecap="round"/>
+          <circle cx={K.lElbow[0]} cy={K.lElbow[1]} r="12" fill={`url(#ik-mJoint-${uid})`}/>
+          <line x1={K.lElbow[0]} y1={K.lElbow[1]} x2={K.lWrist[0]} y2={K.lWrist[1]}
+                stroke={`url(#ik-mLimbD-${uid})`} strokeWidth="19" strokeLinecap="round"/>
+          <circle cx={K.lWrist[0]} cy={K.lWrist[1]} r="13" fill={`url(#ik-mSphere-${uid})`}/>
+        </g>
+
+        {/* Pivot leg (right, back, dark) */}
+        <g>
+          <line x1={K.pelvisR[0] - 2} y1={K.pelvisR[1]} x2={K.rKnee[0]} y2={K.rKnee[1]}
+                stroke={`url(#ik-mLimbD-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+          <circle cx={K.rKnee[0]} cy={K.rKnee[1]} r="17" fill={`url(#ik-mJoint-${uid})`}/>
+          <line x1={K.rKnee[0]} y1={K.rKnee[1]} x2={K.rAnkle[0]} y2={K.rAnkle[1]}
+                stroke={`url(#ik-mLimbD-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+          <circle cx={K.rAnkle[0]} cy={K.rAnkle[1]} r="12" fill={`url(#ik-mJoint-${uid})`}/>
+        </g>
+
+        {/* Stride leg (left, front, light) */}
+        <g>
+          <line x1={K.pelvisL[0] + 2} y1={K.pelvisL[1]} x2={K.lKnee[0]} y2={K.lKnee[1]}
+                stroke={`url(#ik-mLimb-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+          <circle cx={K.lKnee[0]} cy={K.lKnee[1]} r="17" fill={`url(#ik-mJoint-${uid})`}/>
+          <line x1={K.lKnee[0]} y1={K.lKnee[1]} x2={K.lAnkle[0]} y2={K.lAnkle[1]}
+                stroke={`url(#ik-mLimb-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+          <circle cx={K.lAnkle[0]} cy={K.lAnkle[1]} r="12" fill={`url(#ik-mJoint-${uid})`}/>
+        </g>
+
+        {/* Torso */}
+        <line x1={K.lShoulder[0] + 2} y1={K.lShoulder[1] + 4}
+              x2={K.rShoulder[0] - 2} y2={K.rShoulder[1] + 4}
+              stroke={`url(#ik-mLimb-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+        <path d={`
+          M ${K.lShoulder[0] + 4} ${K.lShoulder[1] + 8}
+          C ${K.lShoulder[0] - 2} ${K.lShoulder[1] + 50}, ${K.pelvisL[0] + 2} ${K.pelvisL[1] - 68}, ${K.pelvisL[0] + 6} ${K.pelvisL[1] - 20}
+          L ${K.pelvisR[0] - 6} ${K.pelvisR[1] - 20}
+          C ${K.pelvisR[0] - 2} ${K.pelvisR[1] - 68}, ${K.rShoulder[0] + 2} ${K.rShoulder[1] + 50}, ${K.rShoulder[0] - 4} ${K.rShoulder[1] + 8}
+          Z
+        `} fill={`url(#ik-mTorso-${uid})`} stroke="#1e293b" strokeWidth="1.2"/>
+        <path d={`
+          M ${K.pelvisL[0] + 6} ${K.pelvisL[1] - 22}
+          C ${K.pelvisL[0] + 2} ${K.pelvisL[1] - 12}, ${K.pelvisL[0] - 2} ${K.pelvisL[1] - 2}, ${K.pelvisL[0] - 6} ${K.pelvisL[1] + 10}
+          L ${K.pelvisR[0] + 6} ${K.pelvisR[1] + 10}
+          C ${K.pelvisR[0] + 2} ${K.pelvisR[1] - 2}, ${K.pelvisR[0] - 2} ${K.pelvisR[1] - 12}, ${K.pelvisR[0] - 6} ${K.pelvisR[1] - 22}
+          Z
+        `} fill={`url(#ik-mTorso-${uid})`} stroke="#1e293b" strokeWidth="1"/>
+        <circle cx={K.lShoulder[0]} cy={K.lShoulder[1]} r="15" fill={`url(#ik-mJoint-${uid})`}/>
+        <circle cx={K.rShoulder[0]} cy={K.rShoulder[1]} r="16" fill={`url(#ik-mJoint-${uid})`}/>
+
+        {/* Neck + head */}
+        <line x1={K.neck[0] - 2} y1={K.neck[1] - 6} x2={K.neck[0] + 2} y2={K.neck[1] + 8}
+              stroke={`url(#ik-mLimb-${uid})`} strokeWidth="16" strokeLinecap="round"/>
+        <circle cx={K.head[0]} cy={K.head[1]} r="28" fill={`url(#ik-mSphere-${uid})`} stroke="#1e293b" strokeWidth="1"/>
+        <path d={`M ${K.head[0] - 28} ${K.head[1] - 4} Q ${K.head[0] - 10} ${K.head[1] + 10} ${K.head[0] + 22} ${K.head[1] + 4}`}
+              stroke="#475569" strokeWidth="1" strokeOpacity="0.4" fill="none"/>
+
+        {/* Throwing arm (right) — Cornell late-cocking pose */}
+        <g>
+          <line x1={K.rShoulder[0]} y1={K.rShoulder[1]} x2={K.rElbow[0]} y2={K.rElbow[1]}
+                stroke={`url(#ik-mLimb-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+          <circle cx={K.rElbow[0]} cy={K.rElbow[1]} r="13" fill={`url(#ik-mJoint-${uid})`}/>
+          <line x1={K.rElbow[0]} y1={K.rElbow[1]} x2={K.rWrist[0]} y2={K.rWrist[1]}
+                stroke={`url(#ik-mLimb-${uid})`} strokeWidth="20" strokeLinecap="round"/>
+          <circle cx={K.rWrist[0]} cy={K.rWrist[1]} r="11" fill={`url(#ik-mJoint-${uid})`}/>
+        </g>
+
+        {/* === FULL KINETIC CHAIN ENERGY PATH === */}
+        {/* v77 — Both legs + upper chain */}
+        {/*   Pivot leg (back/push-off): rAnkle → rKnee → pelvis */}
+        {/*   Stride leg (front/landing): lAnkle → lKnee → pelvis */}
+        {/*   Upper chain: pelvis → trunk → shoulder → elbow → wrist → ball */}
+        {energy && (
+          <>
+            {/* Underlay shadows for all three paths */}
+            <path d={energyPathPivotLeg} stroke="#0f1a30" strokeOpacity="0.55" strokeWidth="14"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={energyPathStrideLeg} stroke="#0f1a30" strokeOpacity="0.55" strokeWidth="14"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={energyPathUpperChain} stroke="#0f1a30" strokeOpacity="0.55" strokeWidth="14"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+
+            {/* Pivot leg energy stream (back foot pushes off → drives pelvis rotation) */}
+            <path d={energyPathPivotLeg} stroke={`url(#ik-energy-pivot-${uid})`} strokeWidth="9"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray="20 12" opacity="0.95"
+                  filter={`url(#ik-glow-${uid})`}>
+              <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
+            </path>
+
+            {/* Stride leg energy stream (front foot blocks → pelvis decelerates → trunk accelerates) */}
+            <path d={energyPathStrideLeg} stroke={`url(#ik-energy-stride-${uid})`} strokeWidth="9"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray="20 12" opacity="0.95"
+                  filter={`url(#ik-glow-${uid})`}>
+              <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
+            </path>
+
+            {/* Upper chain energy stream (pelvis → trunk → arm → ball) */}
+            <path d={energyPathUpperChain} stroke={`url(#ik-energy-upper-${uid})`} strokeWidth="9"
+                  fill="none" strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray="20 12" opacity="0.95"
+                  filter={`url(#ik-glow-${uid})`}>
+              <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
+            </path>
+
+            {/* Pelvis convergence point — visualize where both legs' energy combines */}
+            <circle cx={K.pelvisC[0]} cy={K.pelvisC[1]} r="11" fill={ptC.color} opacity="0.4"
+                    filter={`url(#ik-glow-${uid})`}>
+              <animate attributeName="r" values="9;13;9" dur="1.4s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.3;0.6;0.3" dur="1.4s" repeatCount="indefinite"/>
+            </circle>
+
+            {/* Leak indicators on stages with weak transfer */}
+            {ptLeak && (
+              <g>
+                <circle cx={(K.pelvisC[0] + K.trunkC[0]) / 2} cy={(K.pelvisC[1] + K.trunkC[1]) / 2} r="38" fill={`url(#ik-leak-${uid})`}>
+                  <animate attributeName="r" values="32;42;32" dur="1.4s" repeatCount="indefinite"/>
+                  <animate attributeName="opacity" values="0.85;0.45;0.85" dur="1.4s" repeatCount="indefinite"/>
+                </circle>
+                <text x={(K.pelvisC[0] + K.trunkC[0]) / 2}
+                      y={(K.pelvisC[1] + K.trunkC[1]) / 2 + 4}
+                      fill="#fef2f2" fontSize="10" fontWeight="700" textAnchor="middle">⚠ 누수</text>
+              </g>
+            )}
+            {taLeak && (
+              <g>
+                <circle cx={(K.rShoulder[0] + K.rElbow[0]) / 2} cy={(K.rShoulder[1] + K.rElbow[1]) / 2} r="38" fill={`url(#ik-leak-${uid})`}>
+                  <animate attributeName="r" values="32;42;32" dur="1.4s" repeatCount="indefinite"/>
+                  <animate attributeName="opacity" values="0.85;0.45;0.85" dur="1.4s" repeatCount="indefinite"/>
+                </circle>
+              </g>
+            )}
+          </>
+        )}
+
+        {/* === ④ de Swart leg-asymmetry rings (drawn under indicators) === */}
+        {legAsymmetry != null && (() => {
+          const pivotR  = Math.min(28, 10 + (peakPivotHipVel  || 0) / 35);
+          const strideR = Math.min(28, 10 + (peakStrideHipVel || 0) / 35);
+          return (
+            <g>
+              <circle cx={K.rKnee[0]} cy={K.rKnee[1]} r={pivotR + 4} fill="none" stroke="#3b82f6" strokeWidth="2.5" opacity="0.85"/>
+              <circle cx={K.rKnee[0]} cy={K.rKnee[1]} r={pivotR} fill="#3b82f6" opacity="0.4"/>
+              <circle cx={K.lKnee[0]} cy={K.lKnee[1]} r={strideR + 4} fill="none" stroke="#a855f7" strokeWidth="2.5" opacity="0.85"/>
+              <circle cx={K.lKnee[0]} cy={K.lKnee[1]} r={strideR} fill="#a855f7" opacity="0.4"/>
+            </g>
+          );
+        })()}
+
+        {/* === ③ Aguinaldo trunk → arm amplification arrow === */}
+        {transferTA_KE != null && (() => {
+          const arrowWidth = Math.min(14, 4 + transferTA_KE * 2.5);
+          const startX = K.pelvisC[0] + 10, startY = K.pelvisC[1] - 30;
+          const endX   = K.rShoulder[0] - 10, endY = K.rShoulder[1] + 12;
+          return (
+            <g style={{ color: TONES[trunkTone].color }}>
+              <line x1={startX} y1={startY} x2={endX} y2={endY}
+                    stroke="currentColor" strokeWidth={arrowWidth} strokeLinecap="round" opacity="0.55"
+                    markerEnd={`url(#ik-arrow-${uid})`}/>
+            </g>
+          );
+        })()}
+
+        {/* === ② Wasserberger cocking-phase shoulder power (pulse ring) === */}
+        {cockPowerWPerKg != null && (
+          <g style={{ color: TONES[shoulderTone].color }}>
+            <circle cx={K.rShoulder[0]} cy={K.rShoulder[1]} r="36" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.55">
+              <animate attributeName="r" values="28;48;28" dur="1.6s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.7;0;0.7" dur="1.6s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx={K.rShoulder[0]} cy={K.rShoulder[1]} r="28" fill="none" stroke="currentColor" strokeWidth="3.5" opacity="0.9"/>
+          </g>
+        )}
+
+        {/* === ① Howenstein elbow load (pulse) === */}
+        {elbowEff != null && (
+          <g style={{ color: TONES[elbowTone].color }}>
+            <circle cx={K.rElbow[0]} cy={K.rElbow[1]} r="30" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.6">
+              <animate attributeName="r" values="22;36;22" dur="1.8s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.85;0.15;0.85" dur="1.8s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx={K.rElbow[0]} cy={K.rElbow[1]} r="13" fill="currentColor" opacity="0.95"/>
+          </g>
+        )}
+
+        {/* Ball at release point */}
+        <circle cx={K.ball[0]} cy={K.ball[1]} r="9" fill="#f8fafc" stroke="#1e293b" strokeWidth="1.2"/>
+        <path d={`M ${K.ball[0] - 6} ${K.ball[1] - 3} Q ${K.ball[0]} ${K.ball[1] - 8} ${K.ball[0] + 6} ${K.ball[1] - 3}`} stroke="#ef4444" strokeWidth="1.2" fill="none"/>
+        <path d={`M ${K.ball[0] - 6} ${K.ball[1] + 3} Q ${K.ball[0]} ${K.ball[1] + 8} ${K.ball[0] + 6} ${K.ball[1] + 3}`} stroke="#ef4444" strokeWidth="1.2" fill="none"/>
+
+        {/* === ANNOTATIONS / LABEL CARDS === */}
+        {/* ① 팔꿈치 부담 — top right */}
+        {elbowEff != null && (
+          <g>
+            <line x1={K.rElbow[0] + 14} y1={K.rElbow[1] - 4} x2="612" y2="78" stroke={TONES[elbowTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="588" y="44" width="184" height="62" rx="6" fill="#0b1220" stroke={TONES[elbowTone].color} strokeOpacity="0.7"/>
+            <text x="680" y="60" fill={TONES[elbowTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">① 팔꿈치 부담</text>
+            <text x="680" y="80" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">{elbowEff.toFixed(2)} N·m/(m/s)</text>
+            <text x="680" y="98" fill={TONES[elbowTone].color} fontSize="10" textAnchor="middle">{TONES[elbowTone].text} · 낮을수록 좋음</text>
+          </g>
+        )}
+
+        {/* ② 어깨 폭발력 — left of shoulder */}
+        {cockPowerWPerKg != null && (
+          <g>
+            <line x1={K.rShoulder[0] - 22} y1={K.rShoulder[1] - 4} x2="226" y2="158" stroke={TONES[shoulderTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="124" width="184" height="62" rx="6" fill="#0b1220" stroke={TONES[shoulderTone].color} strokeOpacity="0.7"/>
+            <text x="132" y="140" fill={TONES[shoulderTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">② 어깨 폭발력</text>
+            <text x="132" y="160" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">{cockPowerWPerKg.toFixed(1)} W/kg</text>
+            <text x="132" y="178" fill={TONES[shoulderTone].color} fontSize="10" textAnchor="middle">{TONES[shoulderTone].text} · 높을수록 좋음</text>
+          </g>
+        )}
+
+        {/* ETI(T→A) — Trunk→Arm energy transfer (right of shoulder, between shoulder and elbow card) */}
+        {etiTA != null && (
+          <g>
+            <line x1={K.rShoulder[0] + 22} y1={K.rShoulder[1] + 6} x2="612" y2="178" stroke={taC.color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="588" y="144" width="184" height="62" rx="6" fill="#0b1220" stroke={taC.color} strokeOpacity="0.7"/>
+            <text x="680" y="160" fill={taC.color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">몸통→팔 전달 (T→A)</text>
+            <text x="680" y="180" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">ETI {etiTA.toFixed(2)}</text>
+            <text x="680" y="198" fill={taC.color} fontSize="10" fontWeight={taLeak ? 700 : 500} textAnchor="middle">
+              {taC.label}
+            </text>
+          </g>
+        )}
+
+        {/* ③ 몸통→팔 힘 배율 — middle right (Aguinaldo) */}
+        {transferTA_KE != null && (
+          <g>
+            <line x1={K.pelvisC[0] + 60} y1={K.pelvisC[1] - 60} x2="612" y2="266" stroke={TONES[trunkTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="588" y="232" width="184" height="62" rx="6" fill="#0b1220" stroke={TONES[trunkTone].color} strokeOpacity="0.7"/>
+            <text x="680" y="248" fill={TONES[trunkTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">③ 몸통→팔 힘 배율</text>
+            <text x="680" y="268" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">{transferTA_KE.toFixed(2)} 배</text>
+            <text x="680" y="286" fill={TONES[trunkTone].color} fontSize="10" textAnchor="middle">{TONES[trunkTone].text} · 클수록 좋음</text>
+          </g>
+        )}
+
+        {/* ETI(P→T) — Pelvis→Trunk transfer (left, middle) */}
+        {etiPT != null && (
+          <g>
+            <line x1={K.pelvisC[0] - 30} y1={K.pelvisC[1] - 30} x2="226" y2="266" stroke={ptC.color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="232" width="184" height="62" rx="6" fill="#0b1220" stroke={ptC.color} strokeOpacity="0.7"/>
+            <text x="132" y="248" fill={ptC.color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">골반→몸통 전달 (P→T)</text>
+            <text x="132" y="268" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">ETI {etiPT.toFixed(2)}</text>
+            <text x="132" y="286" fill={ptC.color} fontSize="10" fontWeight={ptLeak ? 700 : 500} textAnchor="middle">
+              {ptC.label}
+            </text>
+          </g>
+        )}
+
+        {/* v79 — REMOVED: ④ 두 다리 균형 (legAsymmetry) box was here.
+            The asymmetry is still rendered as the colored rings around feet via de Swart visualization below. */}
+
+        {/* v80 — STRIDE FOOT BLOCK — 회전 에너지 시작점 (with braking-GRF subtitle)
+            Stride foot uses BRAKING ground reaction force to amplify rotational energy:
+            the front foot decelerates the pelvis at FC, transferring momentum to trunk rotation. */}
+        <g>
+          <line x1={K.lAnkle[0] - 8} y1={K.lAnkle[1] + 4} x2="240" y2="500" stroke="#a78bfa" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+          <rect x="40" y="480" width="218" height="68" rx="6" fill="#0b1220" stroke="#a78bfa" strokeOpacity="0.7"/>
+          <text x="149" y="498" fill="#a78bfa" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">디딤발 블록</text>
+          <text x="149" y="516" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">회전 에너지 시작점</text>
+          <text x="149" y="535" fill="#94a3b8" fontSize="9.5" textAnchor="middle">제동 지면반력 이용 회전 에너지 증폭</text>
+        </g>
+
+        {/* v80 — PIVOT FOOT BLOCK — 전진 에너지 시작점 (with propulsive-GRF subtitle)
+            Pivot foot uses PROPULSIVE ground reaction force to generate linear stride energy:
+            push-off from rubber drives forward translation toward the plate. */}
+        <g>
+          <line x1={K.rAnkle[0] + 14} y1={K.rAnkle[1] + 6} x2="660" y2="472" stroke="#3b82f6" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+          <rect x="540" y="472" width="232" height="68" rx="6" fill="#0b1220" stroke="#3b82f6" strokeOpacity="0.7"/>
+          <text x="656" y="490" fill="#3b82f6" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">축발 추진</text>
+          <text x="656" y="508" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">전진 에너지 시작점</text>
+          <text x="656" y="527" fill="#94a3b8" fontSize="9.5" textAnchor="middle">추진 지면반력으로 스트라이드 에너지 생성</text>
+        </g>
+
+        {/* === Joint markers (key kinematic points) === */}
+        <g style={{ pointerEvents: 'none' }}>
+          {[
+            { p: K.rShoulder, c: '#fbbf24', big: true },
+            { p: K.rElbow,    c: '#fbbf24', big: true },
+            { p: K.rWrist,    c: '#fbbf24', big: true },
+            { p: K.lShoulder, c: '#22d3ee' },
+            { p: K.lElbow,    c: '#22d3ee' },
+            { p: K.lWrist,    c: '#22d3ee' },
+            { p: K.pelvisC,   c: '#a78bfa', big: true },
+            { p: K.rKnee,     c: '#22d3ee' },
+            { p: K.rAnkle,    c: '#22d3ee' },
+            { p: K.lKnee,     c: '#22d3ee' },
+            { p: K.lAnkle,    c: '#22d3ee' }
+          ].map((j, i) => (
+            <g key={`jm-${i}`}>
+              <circle cx={j.p[0]} cy={j.p[1]} r={j.big ? 6.5 : 6} fill="#0b1220" stroke="#ffffff" strokeWidth={j.big ? 2 : 1.6} opacity={j.big ? 0.95 : 0.9}/>
+              <circle cx={j.p[0]} cy={j.p[1]} r={j.big ? 3.5 : 3} fill={j.c}/>
+            </g>
+          ))}
+        </g>
+      </svg>
+      <div className="silhouette-legend">
+        <div className="leg-item"><span className="dot" style={{ background: '#22d3ee' }}/>에너지 시작</div>
+        <div className="leg-item"><span className="dot" style={{ background: ptC.color }}/>골반→몸통</div>
+        <div className="leg-item"><span className="dot" style={{ background: taC.color }}/>몸통→팔</div>
+        <div className="leg-item"><span className="dot" style={{ background: TONES[elbowTone].color }}/>① 팔꿈치 부담</div>
+        <div className="leg-item"><span className="dot" style={{ background: TONES[shoulderTone].color }}/>② 어깨 폭발력</div>
+        <div className="leg-item"><span className="dot" style={{ background: '#3b82f6' }}/>축발 · <span className="dot" style={{ background: '#a855f7', marginLeft: 6 }}/>디딤발</div>
+        <div className="leg-item">
+          <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:'#fbbf24', border:'1.5px solid #fff', marginRight:4 }}/>던지는 팔 관절
+          <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:'#22d3ee', border:'1.5px solid #fff', marginLeft:8, marginRight:4 }}/>그 외 관절
+          <span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:'#a78bfa', border:'1.5px solid #fff', marginLeft:8, marginRight:4 }}/>골반
+        </div>
+        <div className="leg-item note">색띠 = 에너지 흐름 · 빨강 점멸 = 누수 · 맥동 링 = 정밀 지표</div>
+      </div>
+    </div>
+  );
+}
+
 // ----------------- Layback meter -----------------
 function LaybackMeter({ deg }) {
   // 3시 위치(오른쪽 수평) = 0°, 반시계방향 → 12시 = 90°, 9시 = 180°, 6시 = 270°
@@ -960,4 +1470,5 @@ window.SequenceChart = SequenceChart;
 window.AngularChart = AngularChart;
 window.EnergyFlow = EnergyFlow;
 window.LaybackMeter = LaybackMeter;
+window.IntegratedKineticDiagram = IntegratedKineticDiagram;
 })();
