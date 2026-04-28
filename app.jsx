@@ -562,20 +562,32 @@
     if (typeof window.BBLFitness === 'undefined' || !window.BBLFitness.buildPhysicalFromManual) missing.push('BBLFitness');
     if (typeof window.BBLPlayerMeta === 'undefined' || !window.BBLPlayerMeta.parseMetaCSV) missing.push('BBLPlayerMeta');
     if (typeof window.BBLDataBuilder === 'undefined' || !window.BBLDataBuilder.build) missing.push('BBLDataBuilder');
+    if (typeof window.BBLDashboardApp !== 'function') missing.push('BBLDashboardApp (dashboard.jsx)');
+    if (typeof window.RadarChart !== 'function') missing.push('RadarChart (charts.jsx)');
     return missing;
   }
-  function mount() {
+  function attemptMount(retriesLeft) {
     const missing = checkDependencies();
-    if (missing.length > 0) {
-      document.getElementById('root').innerHTML =
-        '<div style="padding: 40px; color: #f87171; background: #0a1628; min-height: 100vh; font-family: system-ui;">' +
-        '<h2>의존성 라이브러리 로드 실패</h2>' +
-        '<p>다음 라이브러리가 로드되지 않았습니다:</p>' +
-        '<ul>' + missing.map(m => '<li>' + m + '</li>').join('') + '</ul>' +
-        '</div>';
+    if (missing.length === 0) {
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
       return;
     }
-    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    if (retriesLeft > 0) {
+      // Babel JSX 변환이 비동기일 수 있으므로 100ms 간격으로 최대 30회(3초) 재시도
+      setTimeout(() => attemptMount(retriesLeft - 1), 100);
+      return;
+    }
+    // 최종 실패 — 누락 라이브러리 안내
+    document.getElementById('root').innerHTML =
+      '<div style="padding: 40px; color: #f87171; background: #0a1628; min-height: 100vh; font-family: system-ui;">' +
+      '<h2>의존성 라이브러리 로드 실패</h2>' +
+      '<p>다음 라이브러리가 로드되지 않았습니다:</p>' +
+      '<ul>' + missing.map(m => '<li>' + m + '</li>').join('') + '</ul>' +
+      '<p style="margin-top: 20px; color: #94a3b8; font-size: 13px;">브라우저 콘솔(F12)을 확인해주세요. JSX 파일에 SyntaxError가 있을 수 있습니다.</p>' +
+      '</div>';
+  }
+  function mount() {
+    attemptMount(30);  // 최대 3초간 폴링
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);

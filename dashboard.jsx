@@ -1,5 +1,9 @@
 /* global React, ReactDOM */
-const { useState, useEffect, useRef, useMemo } = React;
+(function () {
+  'use strict';
+  const { useState, useEffect, useRef, useMemo } = React;
+  // charts.jsx에서 등록한 컴포넌트들을 가져옴
+  const { RadarChart, SequenceChart, AngularChart, EnergyFlow, LaybackMeter } = window;
 
 /* ---------------- THEME ---------------- */
 function useTheme() {
@@ -3070,3 +3074,4 @@ function App({ onBack }) {
 }
 
 window.BBLDashboardApp = App;
+})();

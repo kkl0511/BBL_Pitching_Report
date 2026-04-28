@@ -1,5 +1,7 @@
 /* global React */
-const { useState, useEffect, useRef, useMemo } = React;
+(function () {
+  'use strict';
+  const { useState, useEffect, useRef, useMemo } = React;
 
 // ----------------- Radar Chart -----------------
 function RadarChart({ data }) {
@@ -958,3 +960,4 @@ window.SequenceChart = SequenceChart;
 window.AngularChart = AngularChart;
 window.EnergyFlow = EnergyFlow;
 window.LaybackMeter = LaybackMeter;
+})();
