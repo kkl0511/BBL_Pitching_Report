@@ -158,7 +158,7 @@
         return;
       }
       // 여러 명 → 정확히 일치하는 것이 있으면 그걸 우선 로드
-      const exact = found.filter(it => (it.pitcher?.profile?.name || '').toLowerCase() === q.toLowerCase());
+      const exact = found.filter(it => pitcherName(it.pitcher).toLowerCase() === q.toLowerCase());
       if (exact.length === 1) {
         handleLoad(exact[0]);
         return;
@@ -176,7 +176,7 @@
         if (result.kind === 'single') {
           // 단일 선수 → DB에 저장 후 즉시 로드
           const id = savePitcherToDb(result.pitcher);
-          setFeedback(`✅ ${result.pitcher.profile?.name || ''} 분석 결과를 불러왔습니다.`);
+          setFeedback(`✅ ${pitcherName(result.pitcher)} 분석 결과를 불러왔습니다.`);
           onLoadSaved(id);
         } else if (result.kind === 'db') {
           // 전체 DB → 현재 DB에 합치기
@@ -246,8 +246,8 @@
               }}>
                 {matches.map(it => {
                   const p = it.pitcher;
-                  const name = p?.profile?.name || '?';
-                  const date = p?.profile?.date || '';
+                  const name = pitcherName(p);
+                  const date = pitcherDate(p);
                   const ovGrade = p?.summaryScores?.overall?.grade;
                   return (
                     <div key={it.id}
@@ -388,7 +388,7 @@
     const filtered = items.filter(it => {
       if (!filter) return true;
       const q = filter.toLowerCase();
-      const name = it.pitcher?.profile?.name || '';
+      const name = pitcherName(it.pitcher);
       const id = it.id || '';
       return name.toLowerCase().includes(q) || id.toLowerCase().includes(q);
     });
@@ -475,7 +475,11 @@
           }}>
             {filtered.map(it => {
               const p = it.pitcher;
-              const profile = p?.profile || {};
+              // BBLDataBuilder 출력은 평탄 구조(name, date 최상위, heightCm/weightKg는 physical 안), 옛 형식은 profile 객체
+              const name = pitcherName(p);
+              const date = pitcherDate(p);
+              const heightCm = p?.profile?.heightCm || p?.physical?.heightCm;
+              const weightKg = p?.profile?.weightKg || p?.physical?.weightKg;
               const ss = p?.summaryScores || {};
               const ovScore = ss.overall?.score;
               const ovGrade = ss.overall?.grade;
@@ -503,12 +507,12 @@
                         fontSize: 14, fontWeight: 700, color: '#e2e8f0',
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                       }}>
-                        {profile.name || '이름 없음'}
+                        {name || '이름 없음'}
                       </div>
                       <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>
-                        {profile.date || '—'}
-                        {profile.heightCm && profile.weightKg && (
-                          <span style={{ marginLeft: 6 }}>· {profile.heightCm}cm {profile.weightKg}kg</span>
+                        {date || '—'}
+                        {heightCm && weightKg && (
+                          <span style={{ marginLeft: 6 }}>· {heightCm}cm {weightKg}kg</span>
                         )}
                       </div>
                     </div>
@@ -1132,6 +1136,15 @@
     const { _rawBio, _rawPhysical, ...slim } = pitcher;
     return slim;
   }
+  // ⭐ v17 — pitcher 객체에서 이름/날짜 안전하게 추출
+  // BBLDataBuilder 출력: pitcher.name (최상위) / pitcher.date (최상위)
+  // 옛 형식: pitcher.profile.name / pitcher.profile.date
+  function pitcherName(p) {
+    return p?.name || p?.profile?.name || 'unknown';
+  }
+  function pitcherDate(p) {
+    return p?.date || p?.profile?.date || new Date().toISOString().slice(0,10);
+  }
   // 같은 ms에 여러 번 저장돼도 정렬이 안정되도록 모노톤 카운터
   let _saveCounter = 0;
   function nextSaveAt() {
@@ -1141,8 +1154,9 @@
   function pitcherIdOf(pitcher) {
     // 선수 식별 ID: 이름 + 날짜. 같은 선수의 같은 날 데이터면 덮어쓰기.
     // 다른 날에 분석하면 새 항목으로 저장됨.
-    const name = (pitcher.profile?.name || 'unknown').replace(/\s+/g, '_');
-    const date = (pitcher.profile?.date || new Date().toISOString().slice(0,10)).replace(/-/g, '');
+    // BBLDataBuilder 출력은 pitcher.name (최상위), profile 형식은 pitcher.profile.name 둘 다 지원.
+    const name = pitcherName(pitcher).replace(/\s+/g, '_');
+    const date = pitcherDate(pitcher).replace(/-/g, '');
     return `${name}__${date}`;
   }
   function loadDb() {
@@ -1224,15 +1238,21 @@
   // ⭐ v16 — 단일 선수 분석 결과를 "선수명_YYYYMMDD.json"으로 다운로드
   // 학생/교수가 다른 컴퓨터로 옮길 때 사용
   function downloadPitcherJson(pitcher) {
-    if (!pitcher || !pitcher.profile) {
+    if (!pitcher) {
       alert('저장할 분석 결과가 없습니다.');
       return null;
     }
+    // BBLDataBuilder 출력에는 name/date가 최상위에 있음. 둘 중 하나라도 있으면 OK
+    const hasInfo = pitcher.name || pitcher.profile?.name || pitcher.date || pitcher.profile?.date;
+    if (!hasInfo) {
+      alert('선수 정보를 찾을 수 없습니다.');
+      console.error('downloadPitcherJson: 선수 정보 없음. pitcher 객체:', pitcher);
+      return null;
+    }
     const slim = slimPitcher(pitcher);
-    const name = (pitcher.profile.name || 'unknown').replace(/[\s\\/:*?"<>|]/g, '_');
-    const date = (pitcher.profile.date || new Date().toISOString().slice(0,10)).replace(/-/g, '');
+    const name = pitcherName(pitcher).replace(/[\s\\/:*?"<>|]/g, '_');
+    const date = pitcherDate(pitcher).replace(/-/g, '');
     const filename = `${name}_${date}.json`;
-    // 파일 형식: 단일 선수 ({version, exportedAt, pitcher})
     const payload = {
       version: 'bbl-pitcher-single-v1',
       exportedAt: new Date().toISOString(),
@@ -1296,7 +1316,7 @@
     if (!query || !query.trim()) return [];
     const q = query.trim().toLowerCase();
     return listPitchers().filter(it => {
-      const name = (it.pitcher?.profile?.name || '').toLowerCase();
+      const name = pitcherName(it.pitcher).toLowerCase();
       return name.includes(q);
     });
   }
