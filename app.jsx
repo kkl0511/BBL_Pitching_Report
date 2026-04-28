@@ -646,15 +646,112 @@
   // ═════════════════════════════════════════════════════════════════
   // App 라우터
   // ═════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════
+  // 세션 영속성 — 분석 결과를 sessionStorage에 저장
+  //   - 새로고침해도 리포트 페이지 유지
+  //   - URL hash(#report)로 현재 페이지 표시
+  //   - 탭 닫으면 자동으로 사라짐 (다음 세션에 영향 X)
+  //   - "새 분석" 버튼 클릭 시 명시적으로 비움
+  // ═════════════════════════════════════════════════════════════════
+  const STORAGE_KEY = 'bbl_pitcher_v1';
+
+  function saveToStorage(pitcher) {
+    try {
+      // _rawBio, _rawPhysical은 디버그용이고 매우 크기 때문에 저장 시 제외
+      // (sessionStorage 일반 한도 5-10 MB 안에 안전하게 들어가도록)
+      const { _rawBio, _rawPhysical, ...slim } = pitcher;
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+    } catch (e) {
+      console.warn('sessionStorage 저장 실패 (용량 초과 가능):', e);
+    }
+  }
+  function loadFromStorage() {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('sessionStorage 로드 실패:', e);
+      return null;
+    }
+  }
+  function clearStorage() {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function getRouteFromHash() {
+    const h = (window.location.hash || '').replace(/^#/, '');
+    return h === 'report' ? 'report' : 'input';
+  }
+
   function App() {
-    const [route, setRoute] = useState('input');
+    // 초기 라우트: URL hash에서 결정 (새로고침 시 #report면 리포트 유지)
+    const [route, setRouteState] = useState(() => {
+      const initial = getRouteFromHash();
+      // hash가 #report인데 저장된 분석 결과가 없으면 input으로 폴백
+      if (initial === 'report') {
+        const saved = loadFromStorage();
+        if (saved) {
+          window.BBL_PITCHERS = [saved];
+          window.BBL_REF = window.BBLDataBuilder?.REF;
+          return 'report';
+        }
+        // 폴백 — hash 정리
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        return 'input';
+      }
+      return 'input';
+    });
+
+    // 라우트 변경 시 URL hash도 동기화
+    const setRoute = (next) => {
+      setRouteState(next);
+      const targetHash = next === 'report' ? '#report' : '';
+      const newUrl = window.location.pathname + window.location.search + targetHash;
+      if (window.location.hash !== targetHash) {
+        if (window.history && window.history.pushState) {
+          window.history.pushState({ route: next }, '', newUrl);
+        } else {
+          window.location.hash = targetHash;
+        }
+      }
+    };
+
+    // 브라우저 뒤/앞 버튼 처리 (popstate)
+    useEffect(() => {
+      const onPop = () => {
+        const r = getRouteFromHash();
+        if (r === 'report') {
+          const saved = loadFromStorage();
+          if (saved) {
+            window.BBL_PITCHERS = [saved];
+            window.BBL_REF = window.BBLDataBuilder?.REF;
+            setRouteState('report');
+            return;
+          }
+        }
+        setRouteState('input');
+      };
+      window.addEventListener('popstate', onPop);
+      return () => window.removeEventListener('popstate', onPop);
+    }, []);
 
     const onAnalyze = (newPitcher) => {
       window.BBL_PITCHERS = [newPitcher];
       window.BBL_REF = window.BBLDataBuilder.REF;
+      saveToStorage(newPitcher);  // 새로고침 대비 저장
       setRoute('report');
     };
-    const onBack = () => setRoute('input');
+    const onBack = () => {
+      // "새 분석" 시 저장된 결과 비움 — 입력 폼이 깨끗하게 시작
+      clearStorage();
+      window.BBL_PITCHERS = [];
+      setRoute('input');
+    };
 
     if (route === 'input') return <InputPage onAnalyze={onAnalyze}/>;
 

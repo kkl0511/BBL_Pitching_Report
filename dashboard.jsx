@@ -155,7 +155,9 @@ function Sidebar({ pitchers, activeId, onSelect, mode, onMode, navItems, activeN
 
       <div className="sb-foot">
         {onBack && (
-          <button className="sb-foot-btn" onClick={onBack} style={{
+          <button className="sb-foot-btn" onClick={() => {
+            if (confirm('현재 분석 결과를 닫고 새 분석을 시작합니다. 계속하시겠어요?')) onBack();
+          }} style={{
             marginBottom: 6, background: 'transparent', border: '1px solid var(--d-border)'
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -203,7 +205,9 @@ function DashTopBar({ pitcher, mode, theme, onTheme, onMenu, onBack }) {
           </button>
         </div>
         {onBack && (
-          <button className="tb-btn" onClick={onBack} title="새 분석" style={{
+          <button className="tb-btn" onClick={() => {
+            if (confirm('현재 분석 결과를 닫고 새 분석을 시작합니다. 계속하시겠어요?')) onBack();
+          }} title="새 분석" style={{
             background: 'transparent', border: '1px solid var(--d-border)', color: 'var(--d-fg2)',
             padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 6,
             display: 'flex', alignItems: 'center', gap: 6
