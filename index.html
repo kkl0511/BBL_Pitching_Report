@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>BBL · 투수 통합 분석 리포트</title>
+  <meta name="description" content="국민대학교 BioMotion Baseball Lab 투수 통합 분석 리포트 — Uplift CSV + ForceDecks + 구속 데이터 통합 자동 리포트"/>
+
+  <!-- Pretendard (Korean optimized font) -->
+  <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"/>
+
+  <!-- Stylesheets (입력 페이지 + Report 7 대시보드) -->
+  <link rel="stylesheet" href="input.css?v=2"/>
+  <link rel="stylesheet" href="colors_and_type.css?v=2"/>
+  <link rel="stylesheet" href="dashboard.css?v=2"/>
+  <link rel="stylesheet" href="report.css?v=2"/>
+</head>
+<body>
+  <!-- React 마운트 포인트 -->
+  <div id="root"></div>
+
+  <!-- ─── 외부 라이브러리 ─────────────────────────────────────── -->
+  <!-- React 18 (UMD) -->
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+
+  <!-- Babel standalone (JSX 변환) -->
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+  <!-- PapaParse (CSV 파서) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- ─── BBL 전용 JS 모듈 ────────────────────────────────────── -->
+  <!-- 1) Biomechanics 분석 (BBLAnalysis) -->
+  <script src="analysis.js?v=2"></script>
+
+  <!-- 2) ForceDecks CSV 파서 (BBLFitness) — 수동 입력 fallback용 -->
+  <script src="fitness.js?v=2"></script>
+
+  <!-- 2b) 선수 메타 CSV 파서 (BBLPlayerMeta) — 메인 입력 경로 -->
+  <script src="player_meta.js?v=2"></script>
+
+  <!-- 3) 데이터 빌더 (BBLDataBuilder) -->
+  <script src="data_builder.js?v=2"></script>
+
+  <!-- ─── React 컴포넌트 (JSX, Babel 변환) ────────────────────── -->
+  <!-- 4) 차트 컴포넌트 (Radar / Energy / Sequence / Angular / etc.) -->
+  <script type="text/babel" data-presets="react" src="charts.jsx?v=2"></script>
+
+  <!-- 5) 대시보드 (Report 7 — window.BBLDashboardApp 으로 export) -->
+  <script type="text/babel" data-presets="react" src="dashboard.jsx?v=2"></script>
+
+  <!-- 6) 메인 앱 (입력 폼 + 라우터) -->
+  <script type="text/babel" data-presets="react" src="app.jsx?v=2"></script>
+</body>
+</html>
