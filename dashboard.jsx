@@ -1578,6 +1578,61 @@ function CommandProfilePanel({ cmd, energy, layback, factors }) {
   if (!cmd) return null;
   const { measured, note, isDemo, nTrials } = cmd;
 
+  // 등급 색상 매핑 (7대 요인 카드 표시용)
+  const gradeColors = {
+    A: { c: '#4ade80', label: '상위', bg: 'rgba(74,222,128,0.10)' },
+    B: { c: '#60a5fa', label: '중상', bg: 'rgba(96,165,250,0.10)' },
+    C: { c: '#fbbf24', label: '중위', bg: 'rgba(251,191,36,0.10)' },
+    D: { c: '#f87171', label: '하위', bg: 'rgba(248,113,113,0.10)' },
+    na: { c: '#94a3b8', label: '측정불가', bg: 'rgba(148,163,184,0.10)' },
+  };
+
+  // ─── 제구력 7대 요인 학술 설명 (사용자 요청) ───
+  const FACTOR_INFO = {
+    F1_landing: {
+      def: '앞발(디딤발) 착지의 안정성 평가. 핵심 변수: 스트라이드 길이(stride length)·시행간 변동(CV) + FC 시점 무릎 굴곡(front knee flex)·SD. 키네틱 체인의 시작점이라 가장 먼저 평가됨.',
+      meaning: '앞다리는 골반 회전을 받아내는 "벽(wall)" 역할 — 매번 같은 위치, 같은 자세로 착지해야 그 다음 동작들도 일관되게 일어납니다. 첫 단추가 흔들리면 모든 후속 동작도 흔들립니다 (Howenstein 2019).',
+      interpret: 'stride CV > 5% → 매번 다른 위치 착지 → 릴리스 포인트 흔들림 / knee flex SD > 5° → 충격 흡수 일관성 부족 → 어깨 부담 ↑.',
+      judge: '엘리트: stride CV 2-3% · knee 30-50° · SD 3-5°. 한국 고교 우수 stride CV ≤ 4%, knee SD ≤ 5°.'
+    },
+    F2_separation: {
+      def: '골반-몸통 분리(X-factor)와 그 분리 타이밍(P→T lag) 평가. 핵심 변수: 최대 X-factor(°)·SD + P→T lag(ms)·SD.',
+      meaning: '하체가 먼저 회전하고 상체가 나중에 따라가는 시간차가 만들어내는 elastic potential energy가 회전 동력의 핵심. 분리각이 크고 일정해야 같은 폭발력이 매번 만들어집니다 (Stodden 2005).',
+      interpret: 'X-factor < 30°: 분리 부족 → 회전 동력 약함 / SD > 8°: 매번 다른 분리각 → 시기 간 출력 변동 / lag SD > 10ms: 시퀀싱 일관성 부족.',
+      judge: '엘리트: X-factor 40-60° · lag ~50ms · SD < 10ms. 한국 고교 우수 X-factor 35-55°.'
+    },
+    F3_arm_timing: {
+      def: '어깨-팔 타이밍(T→A lag)과 최대 외회전(MER) 일관성 평가. 핵심 변수: T→A lag(ms)·SD + MER(°)·SD.',
+      meaning: '몸통 회전이 정점에 도달한 직후 팔이 가속되어야 효율적 — 너무 빠르면(early arm) 어깨 부담↑, 너무 늦으면 동력 손실. MER이 일관되어야 매번 같은 릴리스 패턴이 만들어집니다 (Aguinaldo 2007).',
+      interpret: 'T→A lag SD > 8ms: 시기마다 다른 타이밍 → 제구·구속 모두 불안정 / MER SD > 5°: 외회전 가동성 일관성 부족.',
+      judge: '엘리트: lag 20-40ms · SD < 5ms · MER 170-185° · SD < 3°. 한국 고교 우수 lag 25-45ms.'
+    },
+    F4_knee_stability: {
+      def: '앞다리 무릎 안정성 평가. 핵심 변수: FC→BR 무릎 굴곡 변화량(Δ)·SD + BR 시점 무릎 신전 정도(lead knee ext at BR).',
+      meaning: '디딤발 무릎이 무너지면 회전축 안정성 손실 → 골반 회전 동력이 새고, 어깨로 부담이 전이됩니다. 반대로 강한 신전(extension)은 추가 가속 모멘텀을 제공 (Driveline Block model).',
+      interpret: 'Δ > +15° (무너짐): 디딤발 근력 부족 / Δ < -15° (강한 신전): 정상 블록 / SD > 5°: 안정성 일관성 부족.',
+      judge: '엘리트: ΔKnee -15°~-5° (블록), 신전각 < 10° at BR. SD < 4°.'
+    },
+    F5_trunk_tilt: {
+      def: '몸통 기울기(전방·측면) 평가. 핵심 변수: 릴리스 시 몸통 전방 기울기(°)·SD + 측면 기울기(lateral tilt at BR)·SD.',
+      meaning: '몸통이 적절히 앞으로 기울어져야 팔이 자연스럽게 회전하면서 공에 마지막 가속을 줍니다. 측면 기울기가 너무 크면 어깨 부담 ↑ (Aguinaldo 2022). 일관성이 핵심 — 매번 같은 자세로 던져야 같은 곳으로 갑니다.',
+      interpret: 'Forward < 25°: 직립 (어깨로 던짐) / 25-45° 정상 / > 50° 과도 / Lateral > 35°: 측면 기울기 과도 (어깨 부담↑).',
+      judge: '엘리트: forward 35-45° · lateral 15-30° · SD < 3°. 한국 고교 우수 forward SD ≤ 4°.'
+    },
+    F6_head_eyes: {
+      def: '머리·시선 안정성 평가. 핵심 변수: 머리 위치 SD (수직·수평) + 시선 방향 일관성. 일부 시스템은 마커리스 측정 한계로 N/A 가능.',
+      meaning: '눈은 타겟을 추적하는 핵심 — 머리와 시선이 흔들리면 vestibulo-ocular 시스템이 보정 작업을 하느라 미세 동작 제어가 흔들리고 제구가 떨어집니다. 정확한 투수일수록 머리가 거의 움직이지 않습니다 (Crotin 2014).',
+      interpret: '머리 위치 SD > 3cm: 자세 안정성 부족 / 시선 일관성 미흡: 타겟 추적 약화 → 제구 핀포인트 능력 저하.',
+      judge: '엘리트: 머리 SD < 2cm. 한국 고교 우수 SD ≤ 3cm. 마커리스 측정에서는 머리 추적 정확도가 제한적이라 N/A 가능 — 영상 검토 권장.'
+    },
+    F7_grip_release: {
+      def: '그립·릴리스 정렬 평가. 핵심 변수: 손목 높이 SD (cm) + Arm slot 각도 SD (°) + 그립 패턴 일관성.',
+      meaning: '같은 곳으로 공을 던지려면 매번 같은 손 위치, 같은 손가락 각도로 공을 놓아야 합니다. 손목 높이와 arm slot의 일관성이 직접 도착 위치 분산을 결정합니다 (Wakai 2002).',
+      interpret: '손목 높이 SD > 3cm 또는 Arm slot SD > 3°: 매번 다른 릴리스 → 도착 위치 분산 ↑ (직접 제구 저하). 그립 변화가 보이면 구질 일관성 문제.',
+      judge: '엘리트: 손목 높이 SD < 1.5cm · Arm slot SD < 2°. 한국 고교 우수 ≤ 2배 이내.'
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* MEASURED 또는 DEMO 배지 */}
@@ -1753,6 +1808,17 @@ function CommandProfilePanel({ cmd, energy, layback, factors }) {
                   <div style={{ fontSize: 11, color: 'var(--d-fg2)', lineHeight: 1.55, paddingTop: 4, borderTop: `1px dashed ${fg.c}33` }}>
                     {f.comment}
                   </div>
+
+                  {/* 학술 설명 InfoBox (사용자 요청 — 7대 요인 각각의 정의/의미/해석/판단) */}
+                  {FACTOR_INFO[f.id] && (
+                    <InfoBox items={[{
+                      term: f.name + ' · 학술 설명',
+                      def: FACTOR_INFO[f.id].def,
+                      meaning: FACTOR_INFO[f.id].meaning,
+                      interpret: FACTOR_INFO[f.id].interpret,
+                      judge: FACTOR_INFO[f.id].judge
+                    }]}/>
+                  )}
                 </div>
               );
             })}
@@ -2084,6 +2150,83 @@ function SinglePitcherView({ p }) {
               : <EnergyFlow energy={p.energy}/>
             }
             <div className="chart-caption">{p.energy.comment}</div>
+
+            {/* 마네킹 카드별 학술 설명 (사용자 요청) */}
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <InfoBox items={[{
+                term: '② 어깨 폭발력 (Cocking-phase Arm Power · W/kg)',
+                def: '코킹(Cocking) 단계 — Foot Contact ~ Maximum External Rotation 사이 — 동안 팔 분절(상완+전완+손)에 가해지는 단위 체중당 평균 파워. Naito 2014 (Hum Mov Sci) 의 induced power 분석 기반. 계산: ΔKE_arm / Δt_cocking ÷ massKg → W/kg 단위.',
+                meaning: '코킹 단계는 팔이 가속을 시작하는 결정적 구간으로, 이때 어깨가 만들어내는 폭발력이 클수록 빠른 ω가 가능하고 결과적으로 구속이 빠릅니다. 단순한 어깨 근력이 아니라 — 짧은 시간(~50ms)에 폭발적으로 출력되는 단위파워 개념이라 구속 메카닉의 정밀 진단에 유용합니다.',
+                interpret: '값이 높지만 구속이 따라오지 않으면 → 만들어진 폭발력이 시퀀싱 또는 누수로 손실되고 있음 (T→A 시퀀싱 점검 필요). 값이 낮은데 팔꿈치 모멘트가 크면 → 어깨 폭발력 부족을 팔꿈치가 보상하는 상태(부상 위험). 두 값이 함께 적정 범위에 있어야 효율적이고 안전한 투구.',
+                judge: '한국 고교 우수 투수 기준: 15-22 W/kg 정상, 22-30 W/kg 우수, 30+ W/kg 엘리트 / 15 미만 부족. SD가 크면 코킹 동작의 일관성 부족 — 시기마다 다른 출력으로 부상 누적 위험 ↑. Naito 2014 elementary 야구선수 baseline ~12 W/kg, MLB 프로 ~30 W/kg.'
+              }]}/>
+
+              <InfoBox items={[
+                {
+                  term: '🦶 디딤발 블록 — 무릎 굴곡 (Front Knee Flexion at FC · °)',
+                  def: '앞발(디딤발) 착지(FC, Foot Contact) 시점의 무릎 굴곡각. 0°가 완전 신전, 굴곡각이 클수록 무릎이 더 굽혀진 상태. 일반적으로 FC 시점에 35-50°가 적정.',
+                  meaning: '앞다리는 키네틱 체인의 "벽(wall)" 역할 — 골반의 전진 운동을 받아 회전 운동으로 전환시키는 지렛대 받침. 적정 굴곡으로 착지하면 충격 흡수와 회전 동력 전환이 모두 가능합니다.',
+                  interpret: '굴곡각이 너무 작으면(< 25°) — 뻣뻣한 착지로 충격 미흡수, 어깨·팔꿈치로 부담 전이 / 너무 크면(> 55°) — 무릎이 너무 굽혀져 회전축 안정성 저하, 골반 회전 동력 손실.',
+                  judge: '한국 고교 우수 30-50° 정상, 25-30° 또는 50-60° 주의, 25° 미만 또는 60° 초과 부적정. SD < 5° 일관성 우수.'
+                },
+                {
+                  term: '🦶 무릎 무너짐 / 뻣뻣 (Knee Collapse · ΔKneeFlex FC→BR)',
+                  def: 'FC ~ BR(Ball Release) 동안의 무릎 굴곡 변화량. 양수(+)면 더 굽혀짐(=무너짐, 무릎이 주저앉음), 음수(-)면 다시 신전됨(=정상 블록 동작), 0 근처면 굴곡 유지(=뻣뻣).',
+                  meaning: '디딤발이 충격을 흡수한 뒤 다시 신전(extension)하면서 골반 회전을 가속하는 "다리 펴기 동작"이 핵심. 무릎이 무너지면(collapse) 키네틱 체인의 기반이 흔들려 회전 동력이 새고, 뻣뻣하면 충격 흡수 부족으로 부상 위험 ↑.',
+                  interpret: 'Δ > +15° (주저앉음) → 디딤발 근력 부족 또는 stride 너무 김. 결과: 구속 손실 + 어깨 부담 ↑ / Δ < -15° (강한 신전) → 정상 블록 / -5°~+5° (뻣뻣) → 충격 흡수 부족 + Sleeper-stretch 부담.',
+                  judge: '한국 고교 우수 -15°~-5° 정상 (블록), -5°~+5° 주의(뻣뻣), +5°~+15° 약한 무너짐, +15° 이상 명확한 무너짐 (즉시 보강 필요).'
+                },
+                {
+                  term: '🦶 무릎 SSC 활용 (Stretch-Shortening Cycle · 늘림→줄임 전환)',
+                  def: 'Stretch-Shortening Cycle. 디딤발 착지 직후 무릎이 잠깐 더 굽혀졌다가(eccentric stretch) 곧바로 다시 펴지는(concentric shortening) 빠른 전환 동작. 탄성 에너지(elastic energy)를 저장하고 재이용하는 메커니즘.',
+                  meaning: '인체 결합조직(tendons, fascia)에 잠시 저장된 탄성 에너지를 회전 동력으로 재활용하는 "공짜 에너지" 메커니즘 (Komi 2003). SSC가 잘 활용되면 같은 근력으로 더 큰 출력을 낼 수 있고, 구속 7-12% 향상 효과 (Crotin 2014).',
+                  interpret: 'Stretch 시간(eccentric phase)이 짧고 깊이가 적정해야 함 → CMJ 같은 점프 검사로 간접 평가 가능 (체력 섹션 RSI-mod와 연결). Stretch가 너무 길면(>200ms) SSC 효과 사라짐.',
+                  judge: '간접 평가: CMJ Reactive Strength Index modified > 0.55 m/s = 우수, 0.30~0.55 = 정상, < 0.30 = 부족 / 직접 평가: 디딤발 무릎 굴곡 시계열에서 stretch→shortening 전환 시간 < 150ms 이상적.'
+                }
+              ]}/>
+
+              <InfoBox items={[
+                {
+                  term: '골반-몸통 전달 (P→T Energy Transfer · KE_trunk_peak / KE_pelvis_peak)',
+                  def: '골반이 만든 회전 운동에너지가 몸통(trunk)으로 얼마나 증폭되어 전달되는지의 비율. 인접 분절의 회전 KE 비율로 측정. 1.0보다 크면 다음 분절이 더 큰 운동량을 가짐(= 키네틱 체인 amplification 정상).',
+                  meaning: '키네틱 체인의 첫 단계 — 하체에서 만든 동력이 상체로 넘어가는 핵심 관문. P→T 전달이 효율적이지 않으면, 하체 출력이 아무리 좋아도 구속에 반영되지 않습니다 (Howenstein 2019).',
+                  interpret: '비율 < 1.5: 미약 — 골반 회전이 몸통으로 전달 안 됨 (X-factor 부족 또는 시퀀싱 오류) / 1.5-3: 약한~정상 증폭 / 3-5: 정상 증폭 / 5+: 강한 증폭. P→T가 약하면 다음 단계(T→A)도 자동으로 약해짐.',
+                  judge: 'Naito 2011 elementary 야구선수 baseline ~3×, 한국 고교 우수 ≥ 3× 정상. 단일축 측정에서는 약간 더 크게 나오는 경향(전체 3D 대비). T→A와 함께 분석 — 두 비율 모두 좋으면 키네틱 체인 효율 우수.'
+                },
+                {
+                  term: '앞발 착지 시 플라잉오픈 (Flying Open at FC · trunkRotAtFP)',
+                  def: '앞발이 땅에 닿는 시점의 몸통 회전 각도 (마운드 정면 기준 0°, 양수는 타자 쪽으로 회전된 상태). 이상적으로는 FC 시점에 trunk가 닫혀 있어야(0~5° 이내) 함. 양수가 크면 "플라잉 오픈" — 몸통이 일찍 열린 상태.',
+                  meaning: '플라잉 오픈은 골반-몸통 분리(X-factor)를 손실시키고 회전 동력 전달을 약화시키는 대표적 메카닉 결함입니다. 몸통이 미리 열려 있으면 골반 회전이 와도 추가 토크가 발생하지 않아, 골반-몸통 전달 비율(P→T)이 약해집니다 (Aguinaldo 2007).',
+                  interpret: '0~5° → 정상 (몸통 닫힘 상태) / 5~15° → 약한 플라잉오픈 (P→T 효율 저하 시작) / 15° 이상 → 명확한 플라잉오픈 (X-factor 손실, 어깨 부담↑, 구속·제구 동시 저하). 시기 간 SD가 크면 동작 불안정.',
+                  judge: '한국 고교 우수 < 5° 정상, 5-10° 주의, 10-15° 보강 필요, 15° 이상 즉시 점검 (mound 정렬 + open shoulder drill). Aguinaldo 2007: trunkRotAtFP > 4°부터 어깨 토크 유의 증가.'
+                }
+              ]}/>
+
+              <InfoBox items={[
+                {
+                  term: '몸통-팔 전달 (T→A Energy Transfer · KE_arm_peak / KE_trunk_peak)',
+                  def: '몸통의 회전 운동에너지가 팔로 얼마나 증폭되어 전달되는지의 비율. 분절이 작아질수록(I↓) 같은 에너지에서 더 빠른 ω가 가능하므로, 정상적으로는 KE_arm > KE_trunk가 되어야 합니다.',
+                  meaning: '키네틱 체인의 마지막 핵심 단계 — 몸통의 회전 동력이 팔로 효율적으로 넘어가야 빠른 공이 만들어집니다. T→A 전달이 약하면 몸통 회전 속도가 빨라도 팔 회전 속도가 따라오지 못해 구속이 정체됩니다 (Aguinaldo & Escamilla 2019, Naito 2011).',
+                  interpret: '비율 < 1.0: 에너지 손실 — 몸통이 팔을 끌어주지 못함 (어깨 가동성 또는 시퀀싱 문제, MER 부족 의심) / 1.0-1.7: 약한 증폭 / 1.7-2.5: 정상 증폭 / 2.5+: 강한 증폭. 전형적 한국 고교 우수 투수: 1.7-2.7×.',
+                  judge: 'Naito 2011 baseline ~2.7×, Aguinaldo 2022 induced power 분석: 전완 파워의 86%가 몸통에서 유래 — 몸통이 유효한 동력원이라는 증거. 한국 고교 우수 ≥ 1.7× 정상.'
+                },
+                {
+                  term: '릴리즈 시 몸통 전방 굴곡 (Trunk Forward Flexion at BR · °)',
+                  def: 'Ball Release 시점의 몸통 전방 기울기 각도. 직립 0°, 앞으로 굽혀질수록 +각도. 한국 고교 우수 투수 35-45°가 일반적.',
+                  meaning: '릴리즈 시 몸통이 적절히 앞으로 기울어져야(forward trunk flexion) 팔이 자연스럽게 회전하면서 공에 마지막 가속을 줄 수 있습니다. 또한 적정한 전방 굴곡은 팔꿈치 부담을 줄이고 릴리스 포인트를 안정화시킵니다 (Fleisig 1999, Matsuo 2001).',
+                  interpret: '< 25°: 직립 자세 (어깨로만 던짐, 어깨 부담↑) / 25-35°: 약한 굴곡 / 35-45°: 정상 / 45-55°: 깊은 굴곡 (제구 우수 가능, 시야 확보 주의) / > 55°: 과도한 굴곡 (몸통이 빠지면서 구속 손실).',
+                  judge: '한국 고교 우수 35-45° 정상. SD < 3° 일관성 우수 — 시기마다 다른 굴곡각이면 릴리스 포인트 흔들림 → 제구 저하. T→A 전달 비율과 함께 분석: 굴곡각 적정 + T→A 정상 = 효율적 마무리.'
+                }
+              ]}/>
+
+              <InfoBox items={[{
+                term: '몸통-팔 힘 배율 (Trunk-to-Arm Force Amplification · induced power)',
+                def: '몸통이 팔에 induce한 파워의 비율 (Aguinaldo 2022). 팔의 회전이 만들어내는 총 파워 중 몸통의 회전이 직접 기여한 비율을 분석. T→A 전달(KE 비율)이 운동에너지의 양적 비교라면, 이는 파워 인과 관계의 분석.',
+                meaning: 'T→A 전달 비율은 "에너지가 얼마나 증폭됐는가"를, 힘 배율은 "그 증폭의 원인이 어디인가"를 나타냅니다. 힘 배율이 높을수록 → 몸통이 진짜 동력원이고 팔은 잘 끌려가는 효율적 메카닉. 낮으면 → 팔이 자체 출력으로 던지는 비효율적 메카닉(어깨·팔꿈치 부담 ↑).',
+                interpret: '힘 배율 ≥ 80% (정상): 몸통이 주된 동력원, 팔은 efficient force translation의 도구 — 안전하고 효율적 / 60-80%: 정상 범위 / < 60%: 팔이 직접 출력 비중 ↑ — 어깨 토크와 팔꿈치 모멘트가 비정상적으로 높을 가능성, 부상 위험 신호. Aguinaldo 2022: 엘리트 투수 평균 86%.',
+                judge: '직접 측정은 induced power 분석이 필요해 ±15% 추정 오차 있음. 간접 진단 — T→A 전달 비율(≥1.7×) + 적정 팔꿈치 모멘트(< 100 N·m) + 정상 어깨 폭발력(15-30 W/kg) 조합으로 종합 판단. 셋이 모두 좋으면 힘 배율도 우수일 가능성 ↑.'
+              }]}/>
+            </div>
           </div>
           <div className="panel">
             <div className="panel-head">
@@ -2179,13 +2322,7 @@ function SinglePitcherView({ p }) {
         <CommandProfilePanel cmd={p.command} energy={p.energy} layback={p.layback} factors={p.factors}/>
       </SectionBlock>
 
-      {/* Section D — 제구 일관성과 안정성 (5영역 ConsistencyCard 그룹) */}
-      {p.consistency && (
-        <SectionBlock num="D" title="Command Consistency · 제구 — 일관성과 안정성"
-          sub="· 매 투구 같은 위치로 던지는 능력 — 시기 간 변동(SD/CV)이 핵심">
-          <ConsistencyPanel cs={p.consistency}/>
-        </SectionBlock>
-      )}
+      {/* Section D 삭제됨 — 사용자 요청에 따라 제거 (Section 03 제구 메카닉스 + Section E 종합 평가로 정리) */}
 
       {/* Section E — 종합 평가 (구속·제구·체력 점수 + 우선순위 개선점) */}
       {p.summaryScores && (
@@ -3440,7 +3577,6 @@ function App({ onBack }) {
     { id: 'kinetic',  label: '키네틱 체인 정밀',   icon: Ic.motion,   num: '05' },
     { id: 'velSyn',   label: '구속 요인 종합',     icon: Ic.star,     num: '06' },
     { id: 'command',  label: '제구 관련 메카닉스', icon: Ic.flag,     num: '03' },
-    { id: 'consist',  label: '제구 일관성',        icon: Ic.flag,     num: 'D' },
     { id: 'summary',  label: '종합 평가',          icon: Ic.star,     num: 'E' },
     { id: 'sw',       label: '강점·약점',          icon: Ic.star,     num: '04' },
     { id: 'flags',    label: '체크 포인트',        icon: Ic.flag,     num: '05B' },
@@ -3453,7 +3589,7 @@ function App({ onBack }) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const numMap = { physical: '01', mech: '02', command: '03', sw: '04', flags: '05B', kinetic: '05', velSyn: '06', consist: 'D', summary: 'E' };
+    const numMap = { physical: '01', mech: '02', command: '03', sw: '04', flags: '05B', kinetic: '05', velSyn: '06', summary: 'E' };
     const targetNum = numMap[id];
     setTimeout(() => {
       const block = document.querySelector(`.section-block[data-section-num="${targetNum}"]`);
