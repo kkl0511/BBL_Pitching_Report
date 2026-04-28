@@ -1123,6 +1123,57 @@ function ExpectedVelocityPanel({ p }) {
 /* ---------------- COMMAND PROFILE PANEL ---------------- */
 /* ---------------- 신규 패널 (Section 05/06/D/E) ---------------- */
 
+// 학술 변인 설명 박스 — 정의/의미/해석/판단 (펼치기/접기)
+function InfoBox({ items }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 10, border: '1px solid var(--d-border)', borderRadius: 6, overflow: 'hidden' }}>
+      <button onClick={() => setOpen(!open)} style={{
+        width: '100%', textAlign: 'left', padding: '8px 12px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'rgba(96,165,250,0.06)', color: '#60a5fa',
+        fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: 'none', fontFamily: 'inherit'
+      }} className="info-toggle">
+        <span>📖 정의 · 의미 · 해석 · 판단 방법</span>
+        <span style={{ color: 'var(--d-fg3)' }}>{open ? '▲ 접기' : '▼ 펼치기'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: 12, background: 'var(--d-bg2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ borderLeft: '2px solid #60a5fa', paddingLeft: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--d-fg1)', marginBottom: 4 }}>{it.term}</div>
+              {it.def && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, marginBottom: 3 }}>
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>정의 · </span>
+                  <span style={{ color: 'var(--d-fg2)' }}>{it.def}</span>
+                </div>
+              )}
+              {it.meaning && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, marginBottom: 3 }}>
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>투구에서의 의미 · </span>
+                  <span style={{ color: 'var(--d-fg2)' }}>{it.meaning}</span>
+                </div>
+              )}
+              {it.interpret && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.55, marginBottom: 3 }}>
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>해석 · </span>
+                  <span style={{ color: 'var(--d-fg2)' }}>{it.interpret}</span>
+                </div>
+              )}
+              {it.judge && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                  <span style={{ color: '#93c5fd', fontWeight: 600 }}>판단 기준 · </span>
+                  <span style={{ color: 'var(--d-fg2)' }}>{it.judge}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Section 05 — 키네틱 체인 KE/Power/Transfer/Elbow 카드
 function KineticChainPanel({ kc }) {
   if (!kc) return null;
@@ -1192,6 +1243,13 @@ function KineticChainPanel({ kc }) {
           <div style={{ fontSize: 10, color: 'var(--d-fg3)', fontStyle: 'italic', marginTop: 6 }}>
             Naito 2011 / Aguinaldo & Escamilla 2019 — 키네틱 체인 amplification convention 적용. Ae M, Tang H, Yokoi T (1992) 일본인 운동선수 분절 inertia 표 기반.
           </div>
+          <InfoBox items={[{
+            term: '분절 운동에너지 (Rotational KE · ½·I·ω²)',
+            def: '각 신체 분절(골반·몸통·팔)의 회전 운동에너지를 J(줄) 단위로 측정. 공식 KE = ½·I·ω² (I = 분절의 관성모멘트, ω = 회전 각속도). 회전 KE만 사용하는 이유는 분절별 비교 시 병진 KE의 비대칭성을 제거하기 위함 (몸통은 병진 우세, 팔은 회전 우세).',
+            meaning: '투수가 와인드업~릴리스 동안 만들어내는 회전 동력의 절대량. 분절이 클수록(I↑) 또는 빨리 회전할수록(ω↑) 큰 KE가 만들어지고, 이것이 키네틱 체인을 통해 공으로 전달되어 구속을 결정합니다. 공으로 전달되는 최종 에너지의 원천.',
+            interpret: 'Pelvis < Trunk < Arm 순으로 KE가 점진 증폭되는 것이 정상입니다. SD가 작으면 일관된 동작(제구에 유리), SD가 크면 시기마다 다른 출력. 절대값이 너무 낮으면 하체 또는 회전 동력 부족, 너무 높은데 구속이 안 따라오면 에너지가 공이 아닌 다른 곳으로 새는 중.',
+            judge: 'Pelvis 20-50 J, Trunk 80-150 J, Arm 150-250 J (한국 고교 우수). 절대값보다 분절 간 증폭 패턴(다음 항목 Transfer 비율)이 더 중요합니다. Naito 2011 기준 amplification convention: 다음 분절 KE > 이전 분절 KE.'
+          }]}/>
         </div>
       )}
       {hasTransfer && (
@@ -1203,6 +1261,13 @@ function KineticChainPanel({ kc }) {
             <TransferCard label="Pelvis → Trunk" formula="KE_trunk_peak / KE_pelvis_peak · Naito 2011 ~3×" t={kc.transferPT_KE}/>
             <TransferCard label="Trunk → Arm"    formula="KE_arm_peak / KE_trunk_peak · Naito 2011 ~2.7×" t={kc.transferTA_KE}/>
           </div>
+          <InfoBox items={[{
+            term: 'Transfer 비율 (회전 KE Amplification)',
+            def: '인접한 두 분절의 회전 KE 비율. P→T는 KE_trunk_peak / KE_pelvis_peak, T→A는 KE_arm_peak / KE_trunk_peak. 1.0보다 크면 다음 분절이 더 큰 회전 운동량을 가졌다는 뜻 (= 에너지 증폭).',
+            meaning: '키네틱 체인의 핵심 지표. 골반에서 만든 동력이 몸통→팔로 얼마나 효율적으로 증폭되는지 정량화합니다. 분절이 작아질수록(I↓) 같은 에너지에서 더 빠른 ω가 가능하므로, 정상적인 키네틱 체인은 단조 증가 비율을 보입니다(Naito 2011, Hirashima 2008).',
+            interpret: 'P→T 비율이 약하면 → 골반 회전이 몸통으로 안 넘어감 (timing 문제 또는 골반-몸통 분리 부족). T→A 비율이 약하면 → 몸통이 팔을 끌어주지 못함 (어깨 가동성 또는 시퀀싱 문제). 두 비율 모두 좋으면 키네틱 체인 효율 우수.',
+            judge: 'P→T: 3× 이상 정상 증폭, 5× 이상 강한 증폭, 1.5× 미만 미약 / T→A: 1.7× 이상 정상, 2.5× 이상 강한 증폭, 1.0× 미만 에너지 손실. Naito 2011 elementary 야구선수 baseline P→T ~3×, T→A ~2.7×. Aguinaldo 2022 induced power 분석: 전완 파워의 86%는 몸통에서 유래.'
+          }]}/>
         </div>
       )}
       {hasPower && (
@@ -1214,6 +1279,13 @@ function KineticChainPanel({ kc }) {
             <PowerCard label="Power → Trunk" val={kc.peakPowerTrunk}/>
             <PowerCard label="Power → Arm"   val={kc.peakPowerArm}/>
           </div>
+          <InfoBox items={[{
+            term: '순간 최대 파워 (Peak dE/dt)',
+            def: '분절의 운동에너지가 시간에 대해 변화하는 비율(dKE/dt)의 최댓값. W(와트) = J/s. 시계열로 KE를 계산한 뒤 시간 미분의 peak를 추출. 평균 파워가 아닌 "찰나의 최대 출력". Wasserberger et al. 2024 (Sports Biomech 23:1160-1175)가 도입한 정밀 진단 지표.',
+            meaning: '에너지 양(KE)이 아닌 에너지 주입 속도를 봅니다. KE가 같아도 그 에너지를 더 짧은 시간에 폭발적으로 내는 선수가 빠른 공을 던집니다. 누수가 어느 시점에 일어나는지를 진단할 수 있는 정밀 지표.',
+            interpret: 'Trunk peak power가 높지만 Arm peak power가 따라오지 못하면 → 몸통에서 만든 폭발이 팔로 정확한 타이밍에 전달되지 않음 (T→A 시퀀싱 문제). 두 값 모두 낮으면 → 절대 출력 부족 (체력 또는 회전 동력 보강 필요).',
+            judge: 'Trunk peak power: 800-1500 W = 정상, 1500+ = 우수, 800 미만 = 부족 / Arm peak power: 1500-3000 W = 정상, 3000+ = 우수, 1500 미만 = 부족. 한국 고교 우수 투수 기준 (MLB 프로는 더 높음).'
+          }]}/>
         </div>
       )}
       {hasElbow && (
@@ -1236,6 +1308,13 @@ function KineticChainPanel({ kc }) {
               팔뚝+손+공 강체 모델 (Feltner 1989) · 추정 ±35%
             </div>
           </div>
+          <InfoBox items={[{
+            term: '팔꿈치 합성 모멘트 (Resultant Elbow Moment · Inverse Dynamics)',
+            def: '팔꿈치 관절에 가해지는 합성 회전 모멘트의 최대값 (N·m). 역동역학(Inverse Dynamics) 방법으로 산출 — 분절(팔뚝+손+공)의 운동방정식을 거꾸로 풀어 관절에 가해진 외력을 추정합니다. 분절 inertia는 Ae M, Tang H, Yokoi T (1992)의 일본인 운동선수 표를 사용 (Yanai et al. 2023, Sci Rep 13:12253과 동일).',
+            meaning: '투구 동작에서 팔꿈치 인대(특히 UCL · 척측 측부 인대)가 견뎌야 하는 부하를 정량화하는 핵심 부상 위험 지표. MER 시점부터 BR(공 놓는 순간)까지의 짧은 시간에 팔꿈치는 매우 큰 외반(valgus) 모멘트를 받으며, 이것이 누적되면 UCL 손상(흔히 "토미존 수술" 대상)으로 이어질 수 있습니다.',
+            interpret: '값이 클수록 팔꿈치 부하 ↑. 단순히 낮으면 안전한 것이 아니라 — 회전 동력이 부족해서 낮을 수도 있음. 따라서 "회전 파워(Trunk Vel) + 효율(Transfer 비율)"이 함께 좋은데도 elbow moment가 낮은 선수가 진정한 "효율적이고 안전한" 투구 동작입니다. 반대로 회전 파워는 평범한데 elbow moment가 높으면 → 키네틱 체인이 비효율적이라 어깨·팔꿈치로 부담이 집중된 상태.',
+            judge: '한국 고교 우수 투수 기준 50-100 N·m 정상 범위. 100-130 N·m 주의 (장기적으로 누적 시 위험), 130+ N·m 위험 (즉각 동작 점검 권장). MLB 프로 평균 ~120 N·m이지만 마커리스 측정의 추정 오차가 ±35% 정도이므로 절대값보다는 SD(시기 간 변동), 동작 점검 후 변화 추적이 더 의미 있습니다. Fleisig 1995 / Aguinaldo 2007 인구 데이터에서 100 N·m 이상부터 급격한 부상 위험 증가가 확인됨.'
+          }]}/>
         </div>
       )}
     </div>
@@ -1497,29 +1576,7 @@ function SummaryScoresPanel({ ss }) {
 /* ---------------- COMMAND PROFILE PANEL ---------------- */
 function CommandProfilePanel({ cmd, energy, layback, factors }) {
   if (!cmd) return null;
-  const { strikePct, plateSdCm, grade, breakdown, measured, note, isDemo, nTrials } = cmd;
-
-  // 등급 색상 매핑
-  const gradeColors = {
-    A: { c: '#4ade80', label: '상위', bg: 'rgba(74,222,128,0.10)' },
-    B: { c: '#60a5fa', label: '중상', bg: 'rgba(96,165,250,0.10)' },
-    C: { c: '#fbbf24', label: '중위', bg: 'rgba(251,191,36,0.10)' },
-    D: { c: '#f87171', label: '하위', bg: 'rgba(248,113,113,0.10)' },
-    na: { c: '#94a3b8', label: '측정불가', bg: 'rgba(148,163,184,0.10)' },
-  };
-  const g = gradeColors[grade] || gradeColors['C'];
-
-  // null 안전 처리
-  const safeStrikePct = (strikePct == null || isNaN(strikePct)) ? 0 : strikePct;
-  const safePlateSd = (plateSdCm == null || isNaN(plateSdCm)) ? 20 : plateSdCm;
-  const strikePctClamped = Math.max(0, Math.min(100, safeStrikePct));
-
-  // 분산 시각화 — strike zone
-  const ZONE_W = 200;
-  const ZONE_H = 240;
-  const ZONE_REAL_W = 43;  // cm 홈플레이트 너비
-  const cmToPx = ZONE_W / ZONE_REAL_W;
-  const dispersionR = safePlateSd * cmToPx;
+  const { measured, note, isDemo, nTrials } = cmd;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1556,101 +1613,32 @@ function CommandProfilePanel({ cmd, energy, layback, factors }) {
         </div>
       )}
 
-      <div className="dash-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {/* 좌측 — 등급 + Strike% 게이지 */}
+      <div className="dash-grid" style={{ gridTemplateColumns: '1fr', gap: 16 }}>
+        {/* 핵심 일관성 분석 (제구력 등급 박스 + 도착 위치 분산 시각화 삭제 — 사용자 요청) */}
         <div className="panel">
           <div className="panel-head">
             <div>
-              <div className="kicker">Estimated Command Grade</div>
-              <h3>제구력 등급</h3>
-            </div>
-          </div>
-          <div style={{ padding: '20px 0', textAlign: 'center' }}>
-            <div style={{
-              display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
-              padding: '20px 36px',
-              background: `linear-gradient(135deg, ${g.c}15, ${g.c}05)`,
-              border: `2px solid ${g.c}`,
-              borderRadius: 16,
-            }}>
-              <div style={{ fontSize: 64, fontWeight: 800, color: g.c, lineHeight: 1, fontFamily: 'Inter' }}>{grade}</div>
-              <div style={{ fontSize: 11, color: 'var(--d-fg3)', marginTop: 4, letterSpacing: '1px' }}>{g.label}</div>
+              <div className="kicker">10-Pitch Consistency Snapshot</div>
+              <h3>핵심 일관성 분석</h3>
+              <div className="sub">· 10구 실측 변동성 — Section D 제구 일관성과 안정성 섹션을 함께 참조하세요</div>
             </div>
           </div>
 
-          {/* Strike% 게이지 */}
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: 'var(--d-fg3)' }}>추정 스트라이크 비율</span>
-              <span style={{ fontSize: 22, fontWeight: 700, color: g.c, fontFamily: 'Inter' }}>{safeStrikePct.toFixed(1)}%</span>
-            </div>
-            <div style={{ height: 10, background: 'rgba(148,163,184,0.12)', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
-              <div style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0,
-                width: `${strikePctClamped}%`,
-                background: `linear-gradient(90deg, ${g.c}88, ${g.c})`,
-                borderRadius: 5,
-              }}/>
-              <div style={{ position: 'absolute', left: '60%', top: -3, bottom: -3, width: 1, background: 'rgba(148,163,184,0.5)' }}/>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--d-fg3)', marginTop: 4 }}>
-              <span>0%</span>
-              <span>고교 평균 60%</span>
-              <span>100%</span>
-            </div>
-          </div>
-
-          {/* 추론 근거 */}
+          {/* 추론 근거 — 5 Domain 종합 요약 */}
           <div style={{
-            marginTop: 14, padding: '10px 12px',
+            marginTop: 8, padding: '10px 12px',
             background: 'rgba(8,8,12,0.3)', border: '1px solid var(--d-border)', borderRadius: 6,
             fontSize: 11.5, color: 'var(--d-fg2)', lineHeight: 1.6,
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', letterSpacing: '1px', marginBottom: 4 }}>
-              핵심 일관성 분석
+              5 Domain 종합
             </div>
             {note}
-          </div>
-        </div>
-
-        {/* 우측 — Plate dispersion 시각화 */}
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <div className="kicker">Plate Dispersion Estimate</div>
-              <h3>도착 위치 분산 (추정)</h3>
-              <div className="sub">· 메카닉 일관성 → 릴리스 일관성 → 도착 분산</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}>
-            <svg viewBox={`0 0 ${ZONE_W + 80} ${ZONE_H + 60}`} style={{ maxWidth: 280 }}>
-              <rect x="40" y="30" width={ZONE_W} height={ZONE_H}
-                fill="rgba(96,165,250,0.04)" stroke="rgba(96,165,250,0.5)" strokeWidth="2" rx="2"/>
-              <line x1={40 + ZONE_W/3} y1="30" x2={40 + ZONE_W/3} y2={30 + ZONE_H} stroke="rgba(96,165,250,0.2)" strokeWidth="1"/>
-              <line x1={40 + 2*ZONE_W/3} y1="30" x2={40 + 2*ZONE_W/3} y2={30 + ZONE_H} stroke="rgba(96,165,250,0.2)" strokeWidth="1"/>
-              <line x1="40" y1={30 + ZONE_H/3} x2={40 + ZONE_W} y2={30 + ZONE_H/3} stroke="rgba(96,165,250,0.2)" strokeWidth="1"/>
-              <line x1="40" y1={30 + 2*ZONE_H/3} x2={40 + ZONE_W} y2={30 + 2*ZONE_H/3} stroke="rgba(96,165,250,0.2)" strokeWidth="1"/>
-              <circle cx={40 + ZONE_W/2} cy={30 + ZONE_H/2} r={dispersionR}
-                fill={`${g.c}25`} stroke={g.c} strokeWidth="2" strokeDasharray="4 3"/>
-              <circle cx={40 + ZONE_W/2} cy={30 + ZONE_H/2} r="3" fill={g.c}/>
-              <text x={40 + ZONE_W/2} y={30 + ZONE_H + 24} textAnchor="middle"
-                style={{ fontSize: 11, fill: 'var(--d-fg2)', fontFamily: 'Inter', fontWeight: 600 }}>
-                σ ≈ {safePlateSd.toFixed(1)} cm
-              </text>
-              <text x={40 + ZONE_W/2} y={30 + ZONE_H + 40} textAnchor="middle"
-                style={{ fontSize: 9, fill: 'var(--d-fg3)' }}>
-                추정 도착 위치 표준편차
-              </text>
-              <text x={40 + ZONE_W/2} y="22" textAnchor="middle"
-                style={{ fontSize: 9, fill: 'var(--d-fg3)', letterSpacing: '0.5px' }}>
-                STRIKE ZONE
-              </text>
-            </svg>
           </div>
 
           {/* 실측 변수 표시 */}
           {measured && (
-            <div style={{ marginTop: 8, padding: '10px 12px', background: 'rgba(8,8,12,0.3)', border: '1px solid var(--d-border)', borderRadius: 6 }}>
+            <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(8,8,12,0.3)', border: '1px solid var(--d-border)', borderRadius: 6 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', letterSpacing: '1px', marginBottom: 8 }}>
                 10구 실측 변동성 (작을수록 일관 ↑)
               </div>

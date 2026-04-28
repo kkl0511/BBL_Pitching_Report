@@ -329,6 +329,44 @@
     const overall = bioCmd.overall || 'N/A';
     const domains = bioCmd.domains || [];
 
+    // ─── Sequencing domain N/A fallback ───
+    // ptLagMs/taLagMs의 CV가 산출 안 되면 (trial 1개 또는 분모 문제) sequencing이 N/A로 떨어짐.
+    // 이때 raw mean 기반으로 등급을 부여 — files Howenstein 2019 / Naito 2014 timing window 사용.
+    // P→T lag elite 25-65ms, T→A lag elite 15-45ms.
+    function rawSequencingGrade(ptMean, taMean) {
+      function gradeOne(v, lo, hi) {
+        if (v == null || isNaN(v)) return null;
+        if (v >= lo && v <= hi) return 4;     // A (elite range)
+        const mid = (lo + hi) / 2;
+        const range = (hi - lo) / 2;
+        const off = Math.abs(v - mid);
+        if (off <= range * 1.5) return 3;     // B
+        if (off <= range * 2.5) return 2;     // C
+        return 1;                              // D
+      }
+      const ptScore = gradeOne(ptMean, 25, 65);
+      const taScore = gradeOne(taMean, 15, 45);
+      const valid = [ptScore, taScore].filter(s => s != null);
+      if (valid.length === 0) return null;
+      const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
+      const grade = avg >= 3.5 ? 'A' : avg >= 2.5 ? 'B' : avg >= 1.5 ? 'C' : 'D';
+      return { grade, score: avg, ptScore, taScore };
+    }
+
+    // 도메인 중 sequencing이 N/A이면 raw mean으로 fallback
+    const sequencingIdx = domains.findIndex(d => d.key === 'sequencing');
+    if (sequencingIdx >= 0 && (domains[sequencingIdx].grade === 'N/A' || domains[sequencingIdx].grade == null)) {
+      const fb = rawSequencingGrade(sm.ptLagMs?.mean, sm.taLagMs?.mean);
+      if (fb) {
+        domains[sequencingIdx] = {
+          ...domains[sequencingIdx],
+          grade: fb.grade,
+          score: fb.score,
+          fallback: true  // 표시용 플래그
+        };
+      }
+    }
+
     // breakdown — 각 domain의 score를 음수로 (낮을수록 좋음)
     // Report 7은 wrist, armslot, trunkTilt, layback, stride, fcRelease 키 사용
     const domainByKey = Object.fromEntries(domains.map(d => [d.key, d]));
@@ -559,36 +597,38 @@
     return valid.reduce((a, b) => a + b, 0) / valid.length;
   }
   function buildVelocityRadar(sm, energy) {
-    // 1. 팔 동작 (Arm Mechanics)
+    // 1. 팔 동작 (Arm Mechanics) — MER · 팔 회전 속도 · Arm slot
     const armMechanics = avgScores([
       varToScore(sm.maxER?.mean,        178, false, 165, 195),
-      varToScore(sm.peakArmVel?.mean,   1900, true),
+      varToScore(sm.peakArmVel?.mean,   1500, true),  // 한국 고교 우수 baseline
       varToScore(sm.armSlotAngle?.mean, 84, false, 50, 110)
     ]);
-    // 2. 하체 블록 (Lower Body Block)
+    // 2. 하체 블록 — 앞다리 신전 · 스트라이드 + 실제 전진 속도(peakCogVel) · 감속(cogDecel)
     const lowerBlock = avgScores([
       varToScore(sm.leadKneeExtAtBR?.mean, 11, true),
       varToScore(sm.strideRatio?.mean, 1.0, false, 0.85, 1.15),
-      varToScore(sm.peakCogVel?.mean, 2.84, true),
-      varToScore(sm.cogDecel?.mean, 1.61, true)
+      // peakCogVel — 한국 고교 ~ 2.4 m/s baseline (Driveline elite 2.84 m/s)
+      sm.peakCogVel?.mean != null ? varToScore(sm.peakCogVel.mean, 2.4, true) : null,
+      // cogDecel — 1.2 m/s baseline (elite 1.6 m/s)
+      sm.cogDecel?.mean != null ? varToScore(sm.cogDecel.mean, 1.2, true) : null
     ]);
-    // 3. 자세 안정성 (Postural Control)
-    const posture = avgScores([
-      varToScore(sm.maxXFactor?.mean, 31, false, 35, 60),
+    // 3. ⭐ 변경 — "자세 안정성" → "로딩 능력": X-factor + Counter Rotation만 사용
+    //    Loading capacity = 골반-몸통 분리 + 반대방향 회전(elastic 에너지 저장)
+    const loadingCapacity = avgScores([
+      // X-factor — 골반-몸통 분리각 (한국 고1 우수 35-50°)
+      varToScore(sm.maxXFactor?.mean, 40, false, 30, 55),
+      // Counter Rotation — 음수일수록 좋음 (반대방향 깊은 회전 = elastic 저장)
       sm.peakTorsoCounterRot?.mean != null
-        ? varToScore(Math.abs(sm.peakTorsoCounterRot.mean), 37, true)
-        : null,
-      varToScore(sm.trunkForwardTilt?.mean != null ? Math.abs(sm.trunkForwardTilt.mean) : null,
-                 36, false, 28, 44),
-      varToScore(sm.trunkLateralTiltAtBR?.mean != null ? Math.abs(sm.trunkLateralTiltAtBR.mean) : null,
-                 25, false, 13, 33)
+        ? varToScore(Math.abs(sm.peakTorsoCounterRot.mean), 30, true)
+        : null
     ]);
-    // 4. 회전 동력 (Rotational Power)
-    const rotation = avgScores([
-      varToScore(sm.peakTrunkVel?.mean,  969, true),
-      varToScore(sm.peakPelvisVel?.mean, 596, true)
-    ]);
-    // 5. ⭐ 키네틱 체인 효율 (우리 시스템 고유)
+    // 4. ⭐ 변경 — "회전 동력" → "회전 파워": 몸통 회전 속도만 사용
+    //    구속과 가장 직접 상관 있는 단일 변인 (Stodden 2005, Aguinaldo 2007)
+    //    baseline: 700°/s = 50점, 850°/s = 70점 (mid 중앙), 1000°/s = 90점
+    const rotationPower = sm.peakTrunkVel?.mean != null
+      ? Math.max(0, Math.min(100, (sm.peakTrunkVel.mean - 600) / 5))
+      : null;
+    // 5. ⭐ 키네틱 체인 효율 — 시퀀싱 + ETI + 누수율 통합
     const kineticChainScore = avgScores([
       sm.ptLagMs?.mean != null  ? varToScore(sm.ptLagMs.mean,  45, false, 25, 65) : null,
       sm.taLagMs?.mean != null  ? varToScore(sm.taLagMs.mean,  30, false, 15, 45) : null,
@@ -600,14 +640,14 @@
 
     function disp(v) { return v == null ? '—' : Math.round(v).toString(); }
     return [
-      { label: '팔 동작',          sub: 'MER · 팔속도 · Arm slot',           dlMapping: 'Driveline: Arm Action',
+      { label: '팔 동작',       sub: 'MER · 팔속도 · Arm slot',         dlMapping: 'Driveline: Arm Action',
         value: armMechanics, lo: 50, hi: 80, display: disp(armMechanics), isOurOwn: false },
-      { label: '하체 블록',        sub: '앞다리 · 스트라이드 · 전진속도',     dlMapping: 'Driveline: Block + CoG',
-        value: lowerBlock,    lo: 50, hi: 80, display: disp(lowerBlock), isOurOwn: false },
-      { label: '자세 안정성',      sub: 'X-factor · Counter Rot · 기울기',  dlMapping: 'Driveline: Posture',
-        value: posture,       lo: 50, hi: 80, display: disp(posture), isOurOwn: false },
-      { label: '회전 동력',        sub: '몸통 · 골반 각속도',                dlMapping: 'Driveline: Rotation',
-        value: rotation,      lo: 50, hi: 80, display: disp(rotation), isOurOwn: false },
+      { label: '하체 블록',     sub: '앞다리 · 스트라이드 · CoG 속도/감속', dlMapping: 'Driveline: Block + CoG',
+        value: lowerBlock, lo: 50, hi: 80, display: disp(lowerBlock), isOurOwn: false },
+      { label: '로딩 능력',     sub: 'X-factor · Counter Rotation',     dlMapping: 'Elastic loading',
+        value: loadingCapacity, lo: 50, hi: 80, display: disp(loadingCapacity), isOurOwn: false },
+      { label: '회전 파워',     sub: '몸통 회전 속도 (구속 핵심)',         dlMapping: 'Driveline: Trunk Rotation',
+        value: rotationPower, lo: 50, hi: 80, display: disp(rotationPower), isOurOwn: false },
       { label: '키네틱 체인 효율', sub: '시퀀싱(lag) + ETI(증폭) + 누수율',  dlMapping: '⭐ 우리 시스템 고유',
         value: kineticChainScore, lo: 50, hi: 80, display: disp(kineticChainScore), isOurOwn: true }
     ];
@@ -751,30 +791,41 @@
     return 'F';
   }
   function calcVelocityScore(sm, energy) {
+    // ─── 한국 고교 우수 투수 기준 (50점 = 잘함, 80점 = 우수, 100점 = 엘리트) ───
+    // 변경 전(MLB elite 기준)에서 변경 후(한국 고1 우수 기준)로 baseline 통일
+    // 이로써 분절 회전 속도의 band(REF) 평가와 점수 평가가 일관됨
     const parts = [];
     const push = (w, v) => { if (Number.isFinite(v)) parts.push({ w, v }); };
+    // 평균 구속 (35%) — 130 km/h = 50점, 145 km/h = 80점, 155 km/h = 100점
     if (sm.velocity?.mean != null) {
       const v = sm.velocity.mean;
-      push(0.35, Math.max(0, Math.min(100, (v - 90) * 1.4)));
+      push(0.35, Math.max(0, Math.min(100, (v - 100) * 2.0)));
     }
+    // 몸통 회전 속도 (20%) — 한국 고1 우수 850°/s = 80점, 600 = 0, 1100 = 100
     if (sm.peakTrunkVel?.mean != null) {
-      push(0.20, Math.max(0, Math.min(100, (sm.peakTrunkVel.mean - 700) / 4)));
+      push(0.20, Math.max(0, Math.min(100, (sm.peakTrunkVel.mean - 600) / 5)));
     }
+    // MER / Layback (13%) — 165° = 50점, 180° = 80점, 195° = 100점
     if (sm.maxER?.mean != null) {
-      push(0.13, Math.max(0, Math.min(100, (sm.maxER.mean - 150) * 2)));
+      push(0.13, Math.max(0, Math.min(100, (sm.maxER.mean - 130) * 1.54)));
     }
+    // CoG 감속 능력 (10%) — files Driveline weight 0.70
     if (sm.cogDecel?.mean != null) {
       push(0.10, Math.max(0, Math.min(100, sm.cogDecel.mean * 50)));
     }
+    // 앞다리 신전 BR (8%)
     if (sm.leadKneeExtAtBR?.mean != null) {
       push(0.08, Math.max(0, Math.min(100, (sm.leadKneeExtAtBR.mean + 10) * 4)));
     }
+    // 스트라이드 비율 (5%)
     if (sm.strideRatio?.mean != null && Number.isFinite(sm.strideRatio.mean)) {
       push(0.05, Math.max(0, Math.min(100, (sm.strideRatio.mean - 0.6) * 250)));
     }
+    // 팔 회전 속도 (5%) — 한국 고1 우수 1450°/s = 50점, 1600 = 80점, 1900 = 100점
     if (sm.peakArmVel?.mean != null) {
-      push(0.05, Math.max(0, Math.min(100, (sm.peakArmVel.mean - 1000) / 12)));
+      push(0.05, Math.max(0, Math.min(100, (sm.peakArmVel.mean - 1100) / 8)));
     }
+    // 에너지 전달 (4%) — files 그대로
     if (sm.etiPT?.mean != null && sm.etiTA?.mean != null) {
       const e = (Math.min(100, (sm.etiPT.mean - 0.7) * 80) + Math.min(100, (sm.etiTA.mean - 0.8) * 75)) / 2;
       push(0.04, Math.max(0, e));
@@ -809,16 +860,17 @@
   // 체력 점수 — BBL 메타 CSV 기반 (band → 점수 변환)
   function calcFitnessScore(physical) {
     if (!physical) return null;
-    const bandToScore = { high: 85, mid: 60, low: 35, na: null };
+    // band 점수 — high(95) / mid(70) / low(40) — 한국 고교 기준 우수자가 90+ 받도록
+    const bandToScore = { high: 95, mid: 70, low: 40, na: null };
     const components = [
       { w: 0.25, v: bandToScore[physical.cmjPower?.band] ?? null,    name: '폭발력 (CMJ)' },
       { w: 0.20, v: bandToScore[physical.maxStrength?.band] ?? null, name: '최대근력 (IMTP)' },
       { w: 0.20, v: bandToScore[physical.reactive?.band] ?? null,    name: '반응성 (RSI-mod)' },
       { w: 0.15, v: bandToScore[physical.ssc?.band] ?? null,         name: '탄성 활용 (EUR)' },
       { w: 0.10, v: bandToScore[physical.release?.band] ?? null,     name: '악력' },
-      // SJ 단위파워가 있으면 포함
+      // SJ 단위파워 — 25 W/kg = 0, 38 = 50, 50 = 95
       { w: 0.10, v: physical.cmjPower?.sj != null
-                    ? Math.max(0, Math.min(100, (physical.cmjPower.sj - 25) * 3)) : null,
+                    ? Math.max(0, Math.min(100, (physical.cmjPower.sj - 25) * 3.8)) : null,
         name: '정지폭발 (SJ)' }
     ];
     const valid = components.filter(c => c.v != null);
@@ -827,16 +879,17 @@
     return valid.reduce((s, c) => s + c.v * c.w, 0) / totalW;
   }
   // 우선순위 개선점 (체력 + 메카닉 + 일관성 통합)
+  // ※ 임계값은 한국 고교 우수 baseline 기준으로 조정 — band 평가와 일관성 확보
   function generatePriorities(scores, sm, energy, physical) {
     const candidates = [];
     const { velocity, command, fitness } = scores;
-    // 체력 약점 (low band)
+    // 체력 약점 (low band만 — 진짜 약점만 표시)
     if (physical) {
       if (physical.cmjPower?.band === 'low') {
         candidates.push({ kind: 'fitness',
           weight: 90,
           title: '하체 폭발력 보강',
-          detail: `CMJ 단위파워 ${physical.cmjPower.cmj ?? '—'} W/kg · 기준 미만`,
+          detail: `CMJ 단위파워 ${physical.cmjPower.cmj ?? '—'} W/kg · 한국 고교 우수 기준 미만`,
           action: '스쿼트 점프, 반동 점프, 박스 점프, 데드리프트 → 발달자극'
         });
       }
@@ -844,7 +897,7 @@
         candidates.push({ kind: 'fitness',
           weight: 85,
           title: '최대근력 보강',
-          detail: `IMTP 단위근력 ${physical.maxStrength.perKg ?? '—'} N/kg · 기준 미만`,
+          detail: `IMTP 단위근력 ${physical.maxStrength.perKg ?? '—'} N/kg · 한국 고교 우수 기준 미만`,
           action: '스쿼트, 데드리프트, 벤치프레스 4주 maximal strength block (3RM, 2-3세트)'
         });
       }
@@ -857,8 +910,8 @@
         });
       }
     }
-    // 구속 메카닉 약점
-    if (velocity != null && velocity < 65) {
+    // 구속 메카닉 약점 — 한국 고교 기준 미만일 때만 약점으로 인식
+    if (velocity != null && velocity < 60) {
       if (energy?.leakRate > 20) {
         candidates.push({ kind: 'velocity',
           weight: 100 - velocity + (energy.leakRate - 20),
@@ -867,24 +920,26 @@
           action: '메디신볼 회전 던지기, 몸통 분리 드릴, 골반-몸통 분리각도 강화'
         });
       }
-      if (sm.peakArmVel?.mean != null && sm.peakArmVel.mean < 1500) {
+      // 한국 고교 우수 baseline은 1350-1550 (band low/mid 경계). low일 때만 약점 표시
+      if (sm.peakArmVel?.mean != null && sm.peakArmVel.mean < 1350) {
         candidates.push({ kind: 'velocity',
-          weight: 100 - velocity + (1500 - sm.peakArmVel.mean) / 30,
+          weight: 100 - velocity + (1350 - sm.peakArmVel.mean) / 30,
           title: '팔 회전 속도 향상',
-          detail: `팔 peak 각속도 ${sm.peakArmVel.mean.toFixed(0)}°/s (엘리트 1900+°/s)`,
+          detail: `팔 peak 각속도 ${sm.peakArmVel.mean.toFixed(0)}°/s · 한국 고교 우수 1350+°/s`,
           action: '플라이오 볼 던지기 (200g·100g), 어깨 외회전 강화, J-band 루틴'
         });
       }
-      if (sm.maxER?.mean != null && sm.maxER.mean < 165) {
+      // MER < 165 = 외회전 가동성 부족
+      if (sm.maxER?.mean != null && sm.maxER.mean < 160) {
         candidates.push({ kind: 'velocity',
-          weight: 100 - velocity + (165 - sm.maxER.mean),
+          weight: 100 - velocity + (160 - sm.maxER.mean),
           title: 'MER (어깨 외회전) 부족',
           detail: `${sm.maxER.mean.toFixed(0)}° (엘리트 170-185°)`,
           action: '슬리퍼 스트레치, 어깨 외회전 가동성 향상, sleeper stretch'
         });
       }
     }
-    // 제구 일관성 약점
+    // 제구 일관성 약점 — files 임계값 그대로
     if (command != null && command < 65) {
       if (sm.fcBrMs?.cv != null && sm.fcBrMs.cv > 8) {
         candidates.push({ kind: 'command',
