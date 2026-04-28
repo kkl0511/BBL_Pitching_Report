@@ -47,6 +47,23 @@
     const counterRef = useRef(0);
     const fileInputRef = useRef(null);
 
+    // accept 문자열 파싱 — 확장자(.csv, .mp4) 또는 MIME prefix(video/*)
+    const acceptsFile = useCallback((file) => {
+      const name = file.name.toLowerCase();
+      const type = (file.type || '').toLowerCase();
+      const tokens = accept.split(',').map(s => s.trim().toLowerCase());
+      return tokens.some(tok => {
+        if (tok === '*' || tok === '*/*') return true;
+        if (tok.startsWith('.')) return name.endsWith(tok);
+        if (tok.endsWith('/*')) {
+          const prefix = tok.slice(0, tok.length - 2);
+          return type.startsWith(prefix + '/');
+        }
+        if (tok.includes('/')) return type === tok;
+        return name.endsWith('.' + tok);
+      });
+    }, [accept]);
+
     const onDragEnter = useCallback((e) => {
       e.preventDefault(); e.stopPropagation();
       counterRef.current++;
@@ -66,20 +83,18 @@
       e.preventDefault(); e.stopPropagation();
       counterRef.current = 0;
       setIsDragging(false);
-      const files = Array.from(e.dataTransfer?.files || [])
-        .filter(f => f.name.toLowerCase().endsWith('.csv'));
+      const files = Array.from(e.dataTransfer?.files || []).filter(acceptsFile);
       if (files.length) {
         if (!multiple && files.length > 1) onFiles([files[0]]);
         else onFiles(files);
       }
-    }, [onFiles, multiple]);
+    }, [onFiles, multiple, acceptsFile]);
     const onClick = useCallback(() => fileInputRef.current?.click(), []);
     const onInputChange = useCallback((e) => {
-      const files = Array.from(e.target.files || [])
-        .filter(f => f.name.toLowerCase().endsWith('.csv'));
+      const files = Array.from(e.target.files || []).filter(acceptsFile);
       if (files.length) onFiles(files);
       e.target.value = '';
-    }, [onFiles]);
+    }, [onFiles, acceptsFile]);
 
     const dropzoneProps = {
       onDragEnter, onDragLeave, onDragOver, onDrop, onClick,
@@ -116,7 +131,10 @@
     const [spinRate, setSpinRate] = useState('');
 
     // 영상
+    const [videoMode, setVideoMode] = useState('file');  // 'file' | 'url'
     const [videoUrl, setVideoUrl] = useState('');
+    const [videoFile, setVideoFile] = useState(null);          // File 객체
+    const [videoObjectUrl, setVideoObjectUrl] = useState(null); // blob URL
 
     // 파일
     const [metaFile, setMetaFile] = useState(null);
@@ -188,8 +206,39 @@
       setAutofilledFields(new Set());
     };
 
+    // 영상 파일 처리
+    const handleVideoFile = useCallback((files) => {
+      const file = files[0];
+      if (!file) return;
+      if (!file.type.startsWith('video/') &&
+          !/\.(mp4|mov|webm|m4v|avi)$/i.test(file.name)) {
+        setError('영상 파일이 아닙니다 (mp4 · mov · webm 권장)');
+        return;
+      }
+      setError('');
+      setVideoFile(file);
+    }, []);
+    const removeVideoFile = () => {
+      setVideoFile(null);
+    };
+
+    // videoFile이 바뀌면 Object URL 생성/해제 (메모리 누수 방지)
+    useEffect(() => {
+      if (!videoFile) {
+        setVideoObjectUrl(null);
+        return;
+      }
+      const url = URL.createObjectURL(videoFile);
+      setVideoObjectUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }, [videoFile]);
+
     const metaDrop = useDropzone(handleMetaFile, { multiple: false });
     const bioDrop = useDropzone(handleBioFiles, { multiple: true });
+    const videoDrop = useDropzone(handleVideoFile, {
+      multiple: false,
+      accept: 'video/*,.mp4,.mov,.webm,.m4v,.avi'
+    });
 
     // 분석 실행
     const runAnalysis = async () => {
@@ -246,7 +295,9 @@
           bmi: bmi ? parseFloat(bmi) : null,
           throwingHand,
           date,
-          videoUrl: videoUrl.trim() || null
+          videoUrl: (videoMode === 'file' && videoObjectUrl)
+            ? videoObjectUrl
+            : (videoUrl.trim() || null)
         };
         const velocityObj = {
           max: velocityMax ? parseFloat(velocityMax) : null,
@@ -448,11 +499,6 @@
                   <input className={fieldClass('spinRate')} type="number" step="1" value={spinRate}
                     onChange={e => setSpinRate(e.target.value)} placeholder="2312"/>
                 </div>
-                <div className="input-field span-2">
-                  <label>측정 영상 URL <span style={{ color: '#64748b', fontWeight: 500 }}>(선택)</span></label>
-                  <input type="url" value={videoUrl}
-                    onChange={e => setVideoUrl(e.target.value)} placeholder="https://youtu.be/..."/>
-                </div>
               </div>
             </div>
           </div>
@@ -494,6 +540,79 @@
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* SECTION 3 — 측정 영상 (선택) */}
+          <div className="input-card">
+            <div className="input-card-head">
+              <span className="input-card-num">03</span>
+              <div>
+                <h3>측정 영상 <span style={{ fontSize: 11, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>(선택)</span></h3>
+                <p>· 파일 업로드 또는 외부 URL · mp4 권장 · 프레임 단위 재생 가능</p>
+              </div>
+            </div>
+            <div className="input-card-body">
+              <div className="input-mode-toggle">
+                <button
+                  className={videoMode === 'file' ? 'active' : ''}
+                  onClick={() => setVideoMode('file')}>파일 업로드</button>
+                <button
+                  className={videoMode === 'url' ? 'active' : ''}
+                  onClick={() => setVideoMode('url')}>URL 입력</button>
+              </div>
+
+              {videoMode === 'file' && (
+                <>
+                  {!videoFile ? (
+                    <div {...videoDrop.dropzoneProps}>
+                      <input {...videoDrop.inputProps}/>
+                      <div className="input-drop-icon">🎥</div>
+                      <div className="input-drop-title">영상 파일 드래그앤드롭 또는 클릭</div>
+                      <div className="input-drop-sub">mp4 · mov · webm · 권장 50 MB 이하</div>
+                    </div>
+                  ) : (
+                    <div className="input-video-preview">
+                      <video
+                        src={videoObjectUrl}
+                        controls
+                        playsInline
+                        style={{ width: '100%', maxHeight: 280, borderRadius: 8, background: '#000' }}/>
+                      <div className="input-video-meta">
+                        <span className="input-file-num">VID</span>
+                        <span className="input-file-name">{videoFile.name}</span>
+                        <span className="input-file-meta">
+                          {(videoFile.size / (1024 * 1024)).toFixed(1)} MB · {videoFile.type || 'video'}
+                        </span>
+                        <button onClick={removeVideoFile} className="input-file-x">×</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="input-hint">
+                    <b>주의:</b> 업로드된 영상은 <b>현재 브라우저 메모리에만</b> 저장됩니다.
+                    페이지 새로고침 시 영상이 사라지며 PDF 인쇄·링크 공유 시에도 포함되지 않습니다.
+                    영구 보관·공유가 필요하면 <b>URL 입력</b> 모드를 사용하세요 (GitHub Releases · YouTube · Google Drive 등).
+                  </div>
+                </>
+              )}
+
+              {videoMode === 'url' && (
+                <>
+                  <div className="input-grid">
+                    <div className="input-field span-4">
+                      <label>측정 영상 URL</label>
+                      <input type="url" value={videoUrl}
+                        onChange={e => setVideoUrl(e.target.value)}
+                        placeholder="https://youtu.be/... 또는 mp4 직접 링크"/>
+                    </div>
+                  </div>
+                  <div className="input-hint">
+                    <b>지원 형식:</b><br/>
+                    · <b>mp4 직접 링크</b> (권장) — GitHub Releases, S3, 직접 호스팅 → 프레임 이동·배속 모두 가능<br/>
+                    · <b>YouTube</b> (youtu.be / youtube.com/watch) → 기본 플레이어만 사용 가능 (프레임 이동 불가)
+                  </div>
+                </>
               )}
             </div>
           </div>

@@ -606,3 +606,37 @@
   .input-header { flex-direction: column; align-items: flex-start; gap: 12px; }
   .input-header-meta { text-align: left; }
 }
+
+/* ─── Video upload preview ───────────────────────────────────── */
+.input-video-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(8, 12, 24, 0.5);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 10px;
+}
+.input-video-preview video {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  border-radius: 8px;
+  background: #000;
+}
+.input-video-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 0;
+  font-size: 12px;
+}
+.input-video-meta .input-file-name {
+  flex: 1;
+  color: #e2e8f0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
