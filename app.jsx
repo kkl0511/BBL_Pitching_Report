@@ -114,7 +114,273 @@
   // ═════════════════════════════════════════════════════════════════
   // 입력 폼
   // ═════════════════════════════════════════════════════════════════
-  function InputPage({ onAnalyze }) {
+  // ⭐ v12 — 저장된 분석 갤러리 (브라우저 localStorage 기반)
+  function SavedReportsGallery({ onLoadSaved, onDeleteSaved }) {
+    const [items, setItems] = useState(() => listPitchers());
+    const [filter, setFilter] = useState('');
+    const [confirmDelete, setConfirmDelete] = useState(null);  // id
+
+    // 자식 액션 후 목록 새로고침
+    const refresh = () => setItems(listPitchers());
+
+    // localStorage 변경 감지 (다른 탭에서 변경 시 동기화)
+    useEffect(() => {
+      const onStorage = (e) => {
+        if (e.key === DB_KEY) refresh();
+      };
+      window.addEventListener('storage', onStorage);
+      return () => window.removeEventListener('storage', onStorage);
+    }, []);
+
+    function fmtDate(ts) {
+      if (!ts) return '—';
+      // savedAt은 Date.now() * 1000 + counter 형태이므로 / 1000으로 ms 복원
+      const ms = ts > 1e15 ? Math.floor(ts / 1000) : ts;
+      const d = new Date(ms);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+    function gradeColor(grade) {
+      if (!grade) return '#94a3b8';
+      const g = String(grade)[0];
+      return g === 'A' ? '#10b981' : g === 'B' ? '#3b82f6' : g === 'C' ? '#f59e0b' : g === 'D' ? '#ef4444' : '#94a3b8';
+    }
+    function exportAll() {
+      const db = loadDb();
+      const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bbl_pitchers_db_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    function importAll(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const obj = JSON.parse(e.target.result);
+          if (!obj || typeof obj !== 'object') throw new Error('잘못된 형식');
+          const existing = loadDb();
+          let added = 0;
+          Object.entries(obj).forEach(([id, entry]) => {
+            if (entry && entry.pitcher) {
+              existing[id] = entry;
+              added++;
+            }
+          });
+          writeDb(existing);
+          refresh();
+          alert(`${added}개의 분석을 불러왔습니다.`);
+        } catch (err) {
+          alert('가져오기 실패: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    const filtered = items.filter(it => {
+      if (!filter) return true;
+      const q = filter.toLowerCase();
+      const name = it.pitcher?.profile?.name || '';
+      const id = it.id || '';
+      return name.toLowerCase().includes(q) || id.toLowerCase().includes(q);
+    });
+
+    return (
+      <div className="saved-gallery" style={{
+        marginBottom: 24, padding: '20px 22px',
+        background: 'linear-gradient(135deg, rgba(96,165,250,0.04), rgba(167,139,250,0.03))',
+        border: '1px solid rgba(96,165,250,0.18)',
+        borderRadius: 12
+      }}>
+        {/* 헤더 */}
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 12, marginBottom: 14
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', letterSpacing: '1.2px', marginBottom: 4 }}>
+              📚 SAVED ANALYSES · 저장된 분석 ({items.length}명)
+            </div>
+            <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>
+              이전에 분석한 선수를 클릭하면 리포트를 다시 볼 수 있습니다.
+              <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 11 }}>· 이 브라우저에만 저장됨 (localStorage)</span>
+            </div>
+          </div>
+          {items.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="🔍 이름으로 검색"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                style={{
+                  padding: '6px 10px', fontSize: 12,
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(96,165,250,0.25)', borderRadius: 6,
+                  color: '#e2e8f0', minWidth: 160, fontFamily: 'inherit', outline: 'none'
+                }}
+              />
+              <button onClick={exportAll} style={{
+                padding: '6px 12px', fontSize: 11.5, fontWeight: 600,
+                background: 'transparent', color: '#60a5fa',
+                border: '1px solid rgba(96,165,250,0.3)', borderRadius: 6,
+                cursor: 'pointer', fontFamily: 'inherit'
+              }} title="모든 분석을 JSON으로 내보내기 (백업/공유용)">
+                💾 백업
+              </button>
+              <label style={{
+                padding: '6px 12px', fontSize: 11.5, fontWeight: 600,
+                background: 'transparent', color: '#a78bfa',
+                border: '1px solid rgba(167,139,250,0.3)', borderRadius: 6,
+                cursor: 'pointer', fontFamily: 'inherit'
+              }} title="JSON 백업 파일 가져오기">
+                📥 가져오기
+                <input type="file" accept=".json,application/json" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files?.[0]) importAll(e.target.files[0]); e.target.value=''; }}/>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* 빈 상태 */}
+        {items.length === 0 ? (
+          <div style={{
+            padding: '24px 18px', textAlign: 'center',
+            color: '#94a3b8', fontSize: 12.5, lineHeight: 1.7,
+            background: 'rgba(0,0,0,0.2)', borderRadius: 8
+          }}>
+            아직 저장된 분석이 없습니다.<br/>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              아래에서 새 분석을 시작하면 자동으로 여기에 저장됩니다.
+            </span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+            검색 결과 없음
+          </div>
+        ) : (
+          /* 카드 그리드 */
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 10
+          }}>
+            {filtered.map(it => {
+              const p = it.pitcher;
+              const profile = p?.profile || {};
+              const ss = p?.summaryScores || {};
+              const ovScore = ss.overall?.score;
+              const ovGrade = ss.overall?.grade;
+              const velScore = ss.velocity?.score;
+              const cmdScore = ss.command?.score;
+              const fitScore = ss.fitness?.score;
+              const isConfirming = confirmDelete === it.id;
+              return (
+                <div key={it.id} style={{
+                  position: 'relative',
+                  padding: '12px 14px',
+                  background: 'rgba(15,23,42,0.6)',
+                  border: '1px solid rgba(96,165,250,0.15)',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                onClick={() => !isConfirming && onLoadSaved(it.id)}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.5)'; e.currentTarget.style.background = 'rgba(15,23,42,0.85)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.15)'; e.currentTarget.style.background = 'rgba(15,23,42,0.6)'; }}>
+                  {/* 상단 — 이름 + 종합등급 */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 14, fontWeight: 700, color: '#e2e8f0',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                      }}>
+                        {profile.name || '이름 없음'}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>
+                        {profile.date || '—'}
+                        {profile.heightCm && profile.weightKg && (
+                          <span style={{ marginLeft: 6 }}>· {profile.heightCm}cm {profile.weightKg}kg</span>
+                        )}
+                      </div>
+                    </div>
+                    {ovGrade && (
+                      <div style={{
+                        flexShrink: 0, padding: '4px 10px', borderRadius: 6,
+                        background: gradeColor(ovGrade) + '22',
+                        border: `1px solid ${gradeColor(ovGrade)}55`,
+                        fontFamily: 'Inter', fontWeight: 800, fontSize: 14,
+                        color: gradeColor(ovGrade)
+                      }}>
+                        {ovGrade}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 중간 — 점수 3축 미니바 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {[
+                      { label: '구속', score: velScore, color: '#f59e0b' },
+                      { label: '제구', score: cmdScore, color: '#a78bfa' },
+                      { label: '체력', score: fitScore, color: '#10b981' }
+                    ].map((m, i) => (
+                      <div key={i} style={{
+                        padding: '4px 6px', background: 'rgba(0,0,0,0.3)', borderRadius: 4,
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: 9, color: '#94a3b8' }}>{m.label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: m.color, fontFamily: 'Inter' }}>
+                          {m.score != null ? m.score : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 하단 — 저장시각 + 삭제 버튼 */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    fontSize: 9.5, color: '#64748b', paddingTop: 6,
+                    borderTop: '1px dashed rgba(148,163,184,0.15)'
+                  }}>
+                    <span>저장: {fmtDate(it.savedAt)}</span>
+                    {!isConfirming ? (
+                      <button onClick={e => { e.stopPropagation(); setConfirmDelete(it.id); }} style={{
+                        background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer',
+                        fontSize: 10, fontFamily: 'inherit', padding: '2px 6px', borderRadius: 3
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}>
+                        🗑 삭제
+                      </button>
+                    ) : (
+                      <span style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => { onDeleteSaved(it.id); setConfirmDelete(null); refresh(); }} style={{
+                          background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px',
+                          borderRadius: 3, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600
+                        }}>확인</button>
+                        <button onClick={() => setConfirmDelete(null)} style={{
+                          background: 'transparent', color: '#94a3b8', border: '1px solid #475569',
+                          padding: '2px 8px', borderRadius: 3, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit'
+                        }}>취소</button>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function InputPage({ onAnalyze, onLoadSaved, onDeleteSaved }) {
     // 선수 프로필
     const [name, setName] = useState('');
     const [nameEn, setNameEn] = useState('');
@@ -354,6 +620,9 @@
             <h1>투수 통합 분석 리포트 생성</h1>
             <p>선수 메타 CSV 1개 + Uplift CSV 10개를 드래그앤드롭하면 자동 분석됩니다.</p>
           </div>
+
+          {/* ⭐ v12 — 저장된 분석 갤러리 (이 브라우저에 저장된 모든 선수) */}
+          <SavedReportsGallery onLoadSaved={onLoadSaved} onDeleteSaved={onDeleteSaved}/>
 
           {/* SECTION 1 */}
           <div className="input-card">
@@ -644,116 +913,250 @@
   }
 
   // ═════════════════════════════════════════════════════════════════
-  // App 라우터
+  // 영속성 — localStorage 기반 다선수 분석 결과 DB (v12)
+  //   - 분석 완료 시 자동 저장 (선수마다 별도 ID)
+  //   - 브라우저 닫아도 유지 (탭 간 공유, 영구)
+  //   - 선수 목록에서 선택해 다시 보기 가능
+  //   - URL: #report → 가장 최근 / #report=<id> → 특정 선수
   // ═════════════════════════════════════════════════════════════════
-  // ═════════════════════════════════════════════════════════════════
-  // 세션 영속성 — 분석 결과를 sessionStorage에 저장
-  //   - 새로고침해도 리포트 페이지 유지
-  //   - URL hash(#report)로 현재 페이지 표시
-  //   - 탭 닫으면 자동으로 사라짐 (다음 세션에 영향 X)
-  //   - "새 분석" 버튼 클릭 시 명시적으로 비움
-  // ═════════════════════════════════════════════════════════════════
-  const STORAGE_KEY = 'bbl_pitcher_v1';
+  const DB_KEY = 'bbl_pitchers_db_v2';
+  const LEGACY_KEY = 'bbl_pitcher_v1';  // 이전 sessionStorage 키 (마이그레이션용)
 
-  function saveToStorage(pitcher) {
+  // 분석 결과를 저장 가능한 형태로 슬림화
+  function slimPitcher(pitcher) {
+    const { _rawBio, _rawPhysical, ...slim } = pitcher;
+    return slim;
+  }
+  // 같은 ms에 여러 번 저장돼도 정렬이 안정되도록 모노톤 카운터
+  let _saveCounter = 0;
+  function nextSaveAt() {
+    _saveCounter = (_saveCounter + 1) % 1000;
+    return Date.now() * 1000 + _saveCounter;
+  }
+  function pitcherIdOf(pitcher) {
+    // 선수 식별 ID: 이름 + 날짜. 같은 선수의 같은 날 데이터면 덮어쓰기.
+    // 다른 날에 분석하면 새 항목으로 저장됨.
+    const name = (pitcher.profile?.name || 'unknown').replace(/\s+/g, '_');
+    const date = (pitcher.profile?.date || new Date().toISOString().slice(0,10)).replace(/-/g, '');
+    return `${name}__${date}`;
+  }
+  function loadDb() {
     try {
-      // _rawBio, _rawPhysical은 디버그용이고 매우 크기 때문에 저장 시 제외
-      // (sessionStorage 일반 한도 5-10 MB 안에 안전하게 들어가도록)
-      const { _rawBio, _rawPhysical, ...slim } = pitcher;
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+      const raw = localStorage.getItem(DB_KEY);
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : {};
     } catch (e) {
-      console.warn('sessionStorage 저장 실패 (용량 초과 가능):', e);
+      console.warn('localStorage DB 로드 실패:', e);
+      return {};
     }
   }
-  function loadFromStorage() {
+  function writeDb(db) {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
+      localStorage.setItem(DB_KEY, JSON.stringify(db));
+      return true;
     } catch (e) {
-      console.warn('sessionStorage 로드 실패:', e);
-      return null;
+      console.warn('localStorage 저장 실패 (용량 초과 가능):', e);
+      // 가장 오래된 항목부터 삭제 후 재시도 — quota exceeded 회복
+      try {
+        const entries = Object.entries(db).sort((a, b) => (a[1].savedAt || 0) - (b[1].savedAt || 0));
+        if (entries.length > 1) {
+          const [oldestId] = entries[0];
+          delete db[oldestId];
+          localStorage.setItem(DB_KEY, JSON.stringify(db));
+          alert(`저장 공간 부족으로 가장 오래된 분석(${oldestId})을 삭제하고 새로 저장했습니다.`);
+          return true;
+        }
+      } catch (_) { /* ignore */ }
+      return false;
     }
   }
-  function clearStorage() {
+  function savePitcherToDb(pitcher) {
+    const id = pitcherIdOf(pitcher);
+    const db = loadDb();
+    db[id] = {
+      id,
+      savedAt: nextSaveAt(),
+      pitcher: slimPitcher(pitcher)
+    };
+    writeDb(db);
+    return id;
+  }
+  function loadPitcherFromDb(id) {
+    const db = loadDb();
+    return db[id]?.pitcher || null;
+  }
+  function deletePitcherFromDb(id) {
+    const db = loadDb();
+    delete db[id];
+    writeDb(db);
+  }
+  function listPitchers() {
+    const db = loadDb();
+    return Object.values(db).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  }
+  function getMostRecentPitcherId() {
+    const list = listPitchers();
+    return list.length > 0 ? list[0].id : null;
+  }
+
+  // 호환 — 기존 sessionStorage에 분석 중인 임시 결과 (새로고침 대비)
+  function saveCurrent(pitcher) {
     try {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.setItem(LEGACY_KEY, JSON.stringify(slimPitcher(pitcher)));
     } catch (e) { /* ignore */ }
   }
+  function loadCurrent() {
+    try {
+      const raw = sessionStorage.getItem(LEGACY_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function clearCurrent() {
+    try { sessionStorage.removeItem(LEGACY_KEY); } catch (e) { /* ignore */ }
+  }
 
-  function getRouteFromHash() {
+  // URL hash 파싱: #report 또는 #report=<id>
+  function parseHash() {
     const h = (window.location.hash || '').replace(/^#/, '');
-    return h === 'report' ? 'report' : 'input';
+    if (!h) return { route: 'input', id: null };
+    if (h === 'report') return { route: 'report', id: null };
+    const m = h.match(/^report=(.+)$/);
+    if (m) return { route: 'report', id: decodeURIComponent(m[1]) };
+    return { route: 'input', id: null };
+  }
+  function buildHash(route, id) {
+    if (route !== 'report') return '';
+    if (!id) return '#report';
+    return '#report=' + encodeURIComponent(id);
   }
 
   function App() {
-    // 초기 라우트: URL hash에서 결정 (새로고침 시 #report면 리포트 유지)
-    const [route, setRouteState] = useState(() => {
-      const initial = getRouteFromHash();
-      // hash가 #report인데 저장된 분석 결과가 없으면 input으로 폴백
-      if (initial === 'report') {
-        const saved = loadFromStorage();
-        if (saved) {
-          window.BBL_PITCHERS = [saved];
-          window.BBL_REF = window.BBLDataBuilder?.REF;
-          return 'report';
+    // 초기 라우트 결정: URL hash → DB 조회 → 없으면 input
+    const initialState = (() => {
+      const h = parseHash();
+      if (h.route === 'report') {
+        // #report=<id> 면 해당 선수 로드
+        if (h.id) {
+          const p = loadPitcherFromDb(h.id);
+          if (p) return { route: 'report', id: h.id, pitcher: p };
         }
-        // 폴백 — hash 정리
+        // #report 만 있으면 가장 최근 또는 sessionStorage 임시 결과
+        const recentId = getMostRecentPitcherId();
+        if (recentId) {
+          const p = loadPitcherFromDb(recentId);
+          if (p) return { route: 'report', id: recentId, pitcher: p };
+        }
+        const tmp = loadCurrent();
+        if (tmp) return { route: 'report', id: null, pitcher: tmp };
+        // 폴백 — hash 정리하고 input으로
         if (window.history && window.history.replaceState) {
           window.history.replaceState(null, '', window.location.pathname + window.location.search);
         }
-        return 'input';
+        return { route: 'input', id: null, pitcher: null };
       }
-      return 'input';
-    });
+      return { route: 'input', id: null, pitcher: null };
+    })();
 
-    // 라우트 변경 시 URL hash도 동기화
-    const setRoute = (next) => {
-      setRouteState(next);
-      const targetHash = next === 'report' ? '#report' : '';
+    const [route, setRouteState] = useState(initialState.route);
+    const [currentId, setCurrentId] = useState(initialState.id);
+
+    // BBL_PITCHERS 글로벌 동기화 (대시보드가 사용)
+    useEffect(() => {
+      if (initialState.pitcher) {
+        window.BBL_PITCHERS = [initialState.pitcher];
+        window.BBL_REF = window.BBLDataBuilder?.REF;
+      }
+      // eslint-disable-next-line
+    }, []);
+
+    // 라우트 + 선수 변경 시 URL hash 동기화
+    const goToReport = (pitcher, id) => {
+      window.BBL_PITCHERS = [pitcher];
+      window.BBL_REF = window.BBLDataBuilder?.REF;
+      setRouteState('report');
+      setCurrentId(id);
+      const targetHash = buildHash('report', id);
       const newUrl = window.location.pathname + window.location.search + targetHash;
       if (window.location.hash !== targetHash) {
         if (window.history && window.history.pushState) {
-          window.history.pushState({ route: next }, '', newUrl);
+          window.history.pushState({ route: 'report', id }, '', newUrl);
         } else {
           window.location.hash = targetHash;
         }
       }
     };
+    const goToInput = () => {
+      clearCurrent();
+      window.BBL_PITCHERS = [];
+      setRouteState('input');
+      setCurrentId(null);
+      const newUrl = window.location.pathname + window.location.search;
+      if (window.location.hash !== '') {
+        if (window.history && window.history.pushState) {
+          window.history.pushState({ route: 'input' }, '', newUrl);
+        } else {
+          window.location.hash = '';
+        }
+      }
+    };
 
-    // 브라우저 뒤/앞 버튼 처리 (popstate)
+    // 브라우저 뒤/앞 버튼 처리
     useEffect(() => {
       const onPop = () => {
-        const r = getRouteFromHash();
-        if (r === 'report') {
-          const saved = loadFromStorage();
-          if (saved) {
-            window.BBL_PITCHERS = [saved];
+        const h = parseHash();
+        if (h.route === 'report') {
+          let p = null, id = null;
+          if (h.id) {
+            p = loadPitcherFromDb(h.id);
+            id = h.id;
+          } else {
+            const recentId = getMostRecentPitcherId();
+            if (recentId) { p = loadPitcherFromDb(recentId); id = recentId; }
+            else { p = loadCurrent(); }
+          }
+          if (p) {
+            window.BBL_PITCHERS = [p];
             window.BBL_REF = window.BBLDataBuilder?.REF;
             setRouteState('report');
+            setCurrentId(id);
             return;
           }
         }
         setRouteState('input');
+        setCurrentId(null);
       };
       window.addEventListener('popstate', onPop);
       return () => window.removeEventListener('popstate', onPop);
     }, []);
 
+    // 새 분석 완료 → DB에 저장 + 리포트로 이동
     const onAnalyze = (newPitcher) => {
-      window.BBL_PITCHERS = [newPitcher];
-      window.BBL_REF = window.BBLDataBuilder.REF;
-      saveToStorage(newPitcher);  // 새로고침 대비 저장
-      setRoute('report');
-    };
-    const onBack = () => {
-      // "새 분석" 시 저장된 결과 비움 — 입력 폼이 깨끗하게 시작
-      clearStorage();
-      window.BBL_PITCHERS = [];
-      setRoute('input');
+      saveCurrent(newPitcher);
+      const id = savePitcherToDb(newPitcher);  // 자동 저장
+      goToReport(newPitcher, id);
     };
 
-    if (route === 'input') return <InputPage onAnalyze={onAnalyze}/>;
+    // 저장된 선수 카드 클릭 → 해당 분석 로드
+    const onLoadSaved = (id) => {
+      const p = loadPitcherFromDb(id);
+      if (!p) {
+        alert('저장된 분석을 찾을 수 없습니다. 삭제되었을 수 있습니다.');
+        return;
+      }
+      goToReport(p, id);
+    };
+
+    // 저장된 선수 삭제
+    const onDeleteSaved = (id) => {
+      deletePitcherFromDb(id);
+      // 현재 보고 있던 분석을 삭제했다면 input으로 이동
+      if (currentId === id) goToInput();
+      // 강제 리렌더
+      setRouteState(prev => prev);
+    };
+
+    if (route === 'input') return <InputPage onAnalyze={onAnalyze} onLoadSaved={onLoadSaved} onDeleteSaved={onDeleteSaved}/>;
 
     if (typeof window.BBLDashboardApp !== 'function') {
       return (
@@ -762,14 +1165,14 @@
           background: '#0a1628', color: '#e2e8f0', flexDirection: 'column', gap: 16
         }}>
           <div style={{ fontSize: 20, fontWeight: 700 }}>대시보드 컴포넌트 로드 실패</div>
-          <button onClick={onBack} style={{
+          <button onClick={goToInput} style={{
             padding: '8px 18px', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6,
             cursor: 'pointer', fontSize: 13, fontWeight: 600
           }}>← 입력으로 돌아가기</button>
         </div>
       );
     }
-    return <window.BBLDashboardApp onBack={onBack}/>;
+    return <window.BBLDashboardApp onBack={goToInput}/>;
   }
 
   // 마운트

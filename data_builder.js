@@ -535,7 +535,10 @@
       flyingOpenDeg:    sm.trunkRotAtFP?.mean ?? null,             // 플라잉오픈 (FC 시점 trunk 회전)
       trunkFlexAtBRDeg: sm.trunkForwardTilt?.mean != null
                           ? Math.abs(sm.trunkForwardTilt.mean)
-                          : null                                    // 릴리즈 시 몸통 굴곡
+                          : null,                                   // 릴리즈 시 몸통 굴곡
+      // ⭐ v10 — FC 시점 몸통 전방 굴곡 (부호 보존: 앞=+, 뒤=−)
+      // 직립(0°) 또는 약간 뒤로 젖힌 상태(음수)가 이상적
+      trunkFlexAtFCDeg: sm.trunkForwardTiltAtFC?.mean ?? null
     };
   }
 

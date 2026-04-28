@@ -921,7 +921,8 @@ function IntegratedKineticDiagram({ energy, precision }) {
     kneeCollapseDeg,    // 무릎 무너짐 (FC→BR 굴곡 변화량, 양수=무너짐)
     kneeSscMs,          // 무릎 SSC stretch→shortening 전환 시간 (ms)
     flyingOpenDeg,      // 플라잉오픈 (FC 시점 trunk rotation)
-    trunkFlexAtBRDeg    // 릴리즈 시 몸통 전방 굴곡 (°)
+    trunkFlexAtBRDeg,   // 릴리즈 시 몸통 전방 굴곡 (°)
+    trunkFlexAtFCDeg    // ⭐ v10 — FC 시점 몸통 전방 굴곡 (음수=뒤로 젖힘=좋음, 양수=앞으로 굽힘=나쁨)
   } = P;
 
   // 파랑 ↔ 빨강 그라데이션 (사용자 요청)
@@ -965,6 +966,16 @@ function IntegratedKineticDiagram({ energy, precision }) {
   const flyingOpenTone = toneLowerBetter(flyingOpenDeg, [5, 10, 15]);
   // 몸통 전방 굴곡 (범위 변인): 35-45° = elite, 25-55° = good
   const trunkFlexTone = toneRange(trunkFlexAtBRDeg, [35, 45], [25, 55]);
+  // ⭐ v10 — FC 시점 몸통 전방 굴곡: 직립 또는 약간 뒤로 젖힘이 좋음
+  //   ≤ -5° (5°+ 뒤로 젖힘) = elite — 가속거리 충분히 확보
+  //   -5° ~ +5° (직립) = good — 정상 자세
+  //   +5° ~ +15° (살짝 앞으로) = mid — 가속거리 손실 시작
+  //   > +15° (이미 앞으로 무너짐) = bad — FC 시점에 이미 굽혀짐
+  const trunkFlexAtFCTone = trunkFlexAtFCDeg == null ? 'none'
+    : trunkFlexAtFCDeg <= -5 ? 'elite'
+    : trunkFlexAtFCDeg <= 5  ? 'good'
+    : trunkFlexAtFCDeg <= 15 ? 'mid'
+    : 'bad';
 
   // Keypoints — EnergyFlow base pose with throwing arm in late-cocking/MER
   // (matches Cornell #22 reference photo): elbow at head height, forearm
@@ -1312,14 +1323,14 @@ function IntegratedKineticDiagram({ energy, precision }) {
           </g>
         )}
 
-        {/* ② 어깨 폭발력 — left of shoulder */}
+        {/* ② 어깨 폭발력 — top left (사용자 요청: 위로) */}
         {cockPowerWPerKg != null && (
           <g>
-            <line x1={K.rShoulder[0] - 22} y1={K.rShoulder[1] - 4} x2="226" y2="158" stroke={TONES[shoulderTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-            <rect x="40" y="124" width="184" height="62" rx="6" fill="#0b1220" stroke={TONES[shoulderTone].color} strokeOpacity="0.7"/>
-            <text x="132" y="140" fill={TONES[shoulderTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">② 어깨 폭발력</text>
-            <text x="132" y="160" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">{cockPowerWPerKg.toFixed(1)} W/kg</text>
-            <text x="132" y="178" fill={TONES[shoulderTone].color} fontSize="10" textAnchor="middle">{TONES[shoulderTone].text} · 높을수록 좋음</text>
+            <line x1={K.rShoulder[0] - 22} y1={K.rShoulder[1] - 4} x2="226" y2="78" stroke={TONES[shoulderTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="44" width="184" height="62" rx="6" fill="#0b1220" stroke={TONES[shoulderTone].color} strokeOpacity="0.7"/>
+            <text x="132" y="60" fill={TONES[shoulderTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">② 어깨 폭발력</text>
+            <text x="132" y="80" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">{cockPowerWPerKg.toFixed(1)} W/kg</text>
+            <text x="132" y="98" fill={TONES[shoulderTone].color} fontSize="10" textAnchor="middle">{TONES[shoulderTone].text} · 높을수록 좋음</text>
           </g>
         )}
 
@@ -1347,14 +1358,14 @@ function IntegratedKineticDiagram({ energy, precision }) {
           </g>
         )}
 
-        {/* ETI(P→T) — Pelvis→Trunk transfer (left, middle) */}
+        {/* ETI(P→T) — Pelvis→Trunk transfer (사용자 요청: 위로 - 어깨 폭발력 바로 아래) */}
         {etiPT != null && (
           <g>
-            <line x1={K.pelvisC[0] - 30} y1={K.pelvisC[1] - 30} x2="226" y2="266" stroke={ptC.color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-            <rect x="40" y="232" width="184" height="62" rx="6" fill="#0b1220" stroke={ptC.color} strokeOpacity="0.7"/>
-            <text x="132" y="248" fill={ptC.color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">골반→몸통 전달 (P→T)</text>
-            <text x="132" y="268" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">ETI {etiPT.toFixed(2)}</text>
-            <text x="132" y="286" fill={ptC.color} fontSize="10" fontWeight={ptLeak ? 700 : 500} textAnchor="middle">
+            <line x1={K.pelvisC[0] - 30} y1={K.pelvisC[1] - 30} x2="226" y2="158" stroke={ptC.color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="124" width="184" height="62" rx="6" fill="#0b1220" stroke={ptC.color} strokeOpacity="0.7"/>
+            <text x="132" y="140" fill={ptC.color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">골반→몸통 전달 (P→T)</text>
+            <text x="132" y="160" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">ETI {etiPT.toFixed(2)}</text>
+            <text x="132" y="178" fill={ptC.color} fontSize="10" fontWeight={ptLeak ? 700 : 500} textAnchor="middle">
               {ptC.label}
             </text>
           </g>
@@ -1385,32 +1396,46 @@ function IntegratedKineticDiagram({ energy, precision }) {
           <text x="656" y="527" fill="#94a3b8" fontSize="9.5" textAnchor="middle">추진 지면반력으로 스트라이드 에너지 생성</text>
         </g>
 
-        {/* ⭐ v8 — LEFT: 무릎 무너짐 + 무릎 SSC 활용 (디딤발 블록 근처) */}
-        {(kneeCollapseDeg != null || kneeSscMs != null) && (
+        {/* ⭐ v9 — 무릎 무너짐 카드 (디딤발 블록 위 · 사용자 요청) */}
+        {kneeCollapseDeg != null && (
           <g>
-            <line x1={K.lKnee[0] - 8} y1={K.lKnee[1]} x2="-22" y2="380" stroke={TONES[kneeCollapseTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-            <rect x="-130" y="358" width="200" height="92" rx="6" fill="#0b1220" stroke={TONES[kneeCollapseTone].color} strokeOpacity="0.7"/>
-            <text x="-30" y="376" fill={TONES[kneeCollapseTone].color} fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">앞무릎 안정성</text>
-            {kneeCollapseDeg != null && (
-              <>
-                <text x="-30" y="396" fill="#e2e8f0" fontSize="11" fontWeight="700" textAnchor="middle">
-                  무너짐: {kneeCollapseDeg > 0 ? '+' : ''}{kneeCollapseDeg.toFixed(1)}°
-                </text>
-                <text x="-30" y="411" fill={TONES[kneeCollapseTone].color} fontSize="9.5" textAnchor="middle">
-                  {kneeCollapseDeg > 5 ? '주저앉음' : kneeCollapseDeg > -5 ? '뻣뻣' : '정상 블록'}
-                </text>
-              </>
-            )}
-            {kneeSscMs != null && (
-              <>
-                <text x="-30" y="429" fill="#e2e8f0" fontSize="10.5" fontWeight="700" textAnchor="middle">
-                  SSC: {kneeSscMs.toFixed(0)}ms
-                </text>
-                <text x="-30" y="443" fill={TONES[kneeSscTone].color} fontSize="9" textAnchor="middle">
-                  {TONES[kneeSscTone].text} · 짧을수록 ↑
-                </text>
-              </>
-            )}
+            <line x1={K.lKnee[0] - 8} y1={K.lKnee[1] - 4} x2="240" y2="350" stroke={TONES[kneeCollapseTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="320" width="218" height="62" rx="6" fill="#0b1220" stroke={TONES[kneeCollapseTone].color} strokeOpacity="0.7"/>
+            <text x="149" y="336" fill={TONES[kneeCollapseTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">무릎 무너짐</text>
+            <text x="149" y="356" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">
+              {kneeCollapseDeg > 0 ? '+' : ''}{kneeCollapseDeg.toFixed(1)}°
+            </text>
+            <text x="149" y="374" fill={TONES[kneeCollapseTone].color} fontSize="10" textAnchor="middle">
+              {kneeCollapseDeg > 5 ? '주저앉음 · 보강 필요'
+                : kneeCollapseDeg > -5 ? '뻣뻣 · 흡수 부족'
+                : kneeCollapseDeg >= -20 ? '정상 블록'
+                : '과도한 신전'}
+            </text>
+          </g>
+        )}
+
+        {/* ⭐ v9 — 무릎 SSC 활용 카드 (디딤발 블록 위 · 무릎 무너짐 카드 아래) */}
+        {kneeSscMs != null && (
+          <g>
+            <line x1={K.lKnee[0] - 4} y1={K.lKnee[1] + 4} x2="258" y2="430" stroke={TONES[kneeSscTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="398" width="218" height="62" rx="6" fill="#0b1220" stroke={TONES[kneeSscTone].color} strokeOpacity="0.7"/>
+            <text x="149" y="414" fill={TONES[kneeSscTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">무릎 SSC 활용</text>
+            <text x="149" y="434" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">
+              {kneeSscMs.toFixed(0)} ms
+            </text>
+            <text x="149" y="452" fill={TONES[kneeSscTone].color} fontSize="10" textAnchor="middle">
+              {TONES[kneeSscTone].text} · 짧을수록 좋음 (탄성 회수)
+            </text>
+          </g>
+        )}
+
+        {/* SSC 측정 불가 시 안내 카드 (RSI-mod로 추정 가능) */}
+        {kneeSscMs == null && kneeCollapseDeg != null && (
+          <g>
+            <rect x="40" y="398" width="218" height="62" rx="6" fill="#0b1220" stroke="#475569" strokeOpacity="0.7" strokeDasharray="3 3"/>
+            <text x="149" y="414" fill="#94a3b8" fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">무릎 SSC 활용</text>
+            <text x="149" y="434" fill="#94a3b8" fontSize="13" fontWeight="700" textAnchor="middle">측정 불가</text>
+            <text x="149" y="452" fill="#64748b" fontSize="9" textAnchor="middle">CMJ RSI-mod로 간접 평가</text>
           </g>
         )}
 
@@ -1426,6 +1451,27 @@ function IntegratedKineticDiagram({ energy, precision }) {
             <text x="-30" y="276" fill={TONES[flyingOpenTone].color} fontSize="9.5" textAnchor="middle">
               {TONES[flyingOpenTone].text} · 작을수록 ↑
             </text>
+          </g>
+        )}
+
+        {/* ⭐ v10 — RIGHT-TOP: FC 시점 몸통 자세 (상체 근처, 사용자 요청)
+            직립 또는 약간 뒤로 젖힌 상태(음수)가 좋음
+            연결선: 어깨 → 카드 (상체 영역) */}
+        {trunkFlexAtFCDeg != null && (
+          <g>
+            <line x1={K.rShoulder[0] + 24} y1={K.rShoulder[1] - 6} x2="822" y2="120" stroke={TONES[trunkFlexAtFCTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="788" y="92" width="200" height="76" rx="6" fill="#0b1220" stroke={TONES[trunkFlexAtFCTone].color} strokeOpacity="0.7"/>
+            <text x="888" y="110" fill={TONES[trunkFlexAtFCTone].color} fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">FC 몸통 자세</text>
+            <text x="888" y="131" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">
+              {trunkFlexAtFCDeg > 0 ? '+' : ''}{trunkFlexAtFCDeg.toFixed(1)}°
+            </text>
+            <text x="888" y="148" fill={TONES[trunkFlexAtFCTone].color} fontSize="9.5" textAnchor="middle">
+              {trunkFlexAtFCDeg <= -5 ? '뒤로 젖힘 · 우수'
+                : trunkFlexAtFCDeg <= 5  ? '직립 · 양호'
+                : trunkFlexAtFCDeg <= 15 ? '약간 앞으로'
+                : '이미 앞으로 무너짐'}
+            </text>
+            <text x="888" y="161" fill="#64748b" fontSize="8.5" textAnchor="middle">앞발 착지 시점 · 직립~음수 이상적</text>
           </g>
         )}
 

@@ -1004,6 +1004,29 @@
       }
     }
 
+    // ⭐ v9 — Trunk forward tilt at FC (foot contact)
+    //   직립(0°) 또는 약간 뒤로 젖힌 상태(음수)가 이상적.
+    //   부호 보존: dz의 sign으로 앞/뒤 구분 (홈플레이트 방향이 + 라고 가정 — 던지는 방향)
+    //   양수 = 이미 앞으로 굽혀짐 (좋지 않음, 너무 일찍 무너짐)
+    //   음수 = 뒤로 젖힌 상태 (좋음, 가속 거리 확보)
+    let trunkForwardTiltAtFC = null;
+    const fcR = rows[fcRow];
+    if (fcR) {
+      const pelvis = jc(fcR, 'pelvis');
+      const neck   = jc(fcR, 'proximal_neck');
+      if (pelvis && neck) {
+        const dy = neck.y - pelvis.y;
+        const dz = neck.z - pelvis.z;
+        if (dy > 0.05) {
+          // 부호 보존: 앞으로 굽혀지면 +, 뒤로 젖히면 −
+          // 던지는 방향(홈플레이트)이 +z 라고 가정
+          const armSign = (armSide === 'right') ? 1 : -1;  // 좌투면 방향 반대
+          const signedDz = dz * armSign;
+          trunkForwardTiltAtFC = Math.atan2(signedDz, dy) * 180 / Math.PI;
+        }
+      }
+    }
+
     // Wrist height at BR (m above ground)
     let wristHeight = null;
     if (brR) {
@@ -1285,6 +1308,7 @@
       maxER_invalid: maxERInvalid,
       bodyHeight, strideLength, strideRatio,
       trunkForwardTilt, trunkLateralTilt,
+      trunkForwardTiltAtFC,  // ⭐ v9 - FC 시점 trunk 전방 기울기 (직립/약간 뒤로젖힘 = 좋음)
       // v54 — NEW Driveline-aligned variables
       leadKneeExtAtBR, trunkRotAtFP, trunkRotAtBR,
       peakCogVel, cogDecel, trunkLateralTiltAtBR,
@@ -1812,8 +1836,9 @@
       strideLength:      agg(perTrialStats.map(s => s.strideLength)),
       strideRatio:       agg(perTrialStats.map(s => s.strideRatio)),
       armSlotAngle:      agg(perTrialStats.map(s => s.armSlotAngle)),
-      trunkForwardTilt:  agg(perTrialStats.map(s => s.trunkForwardTilt)),
-      trunkLateralTilt:  agg(perTrialStats.map(s => s.trunkLateralTilt)),
+      trunkForwardTilt:    agg(perTrialStats.map(s => s.trunkForwardTilt)),
+      trunkForwardTiltAtFC: agg(perTrialStats.map(s => s.trunkForwardTiltAtFC)),  // v9 - FC 시점
+      trunkLateralTilt:    agg(perTrialStats.map(s => s.trunkLateralTilt)),
       // v54 — NEW Driveline-aligned aggregations
       leadKneeExtAtBR:    agg(perTrialStats.map(s => s.leadKneeExtAtBR)),
       trunkRotAtFP:       agg(perTrialStats.map(s => s.trunkRotAtFP)),
