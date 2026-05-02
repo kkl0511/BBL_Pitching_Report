@@ -1,57 +1,1644 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>BBL · 투수 통합 분석 리포트</title>
-  <meta name="description" content="국민대학교 BioMotion Baseball Lab 투수 통합 분석 리포트 — Uplift CSV + ForceDecks + 구속 데이터 통합 자동 리포트"/>
-
-  <!-- Pretendard (Korean optimized font) -->
-  <link rel="stylesheet" as="style" crossorigin
-        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"/>
-
-  <!-- Stylesheets (입력 페이지 + Report 7 대시보드) -->
-  <link rel="stylesheet" href="input.css?v=17"/>
-  <link rel="stylesheet" href="colors_and_type.css?v=17"/>
-  <link rel="stylesheet" href="dashboard.css?v=17"/>
-  <link rel="stylesheet" href="report.css?v=17"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>BBL 신규 선수 리포트 생성 — v29 코호트 기반</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0a0b0d;
+    --bg-card: #141518;
+    --bg-elevated: #1c1d21;
+    --border: #2a2c31;
+    --text-primary: #e8e9ec;
+    --text-secondary: #b3b5b9;
+    --text-muted: #5f636b;
+    --accent: #ff6b35;
+    --fitness: #60a5fa;
+    --mechanics: #ff6b35;
+    --control: #c084fc;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  .display { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .input-field {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    width: 100%;
+  }
+  .input-field:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .input-field::placeholder { color: var(--text-muted); }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s;
+    font-size: 13px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .age-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .age-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .step-title { font-size: 18px; font-weight: 700; }
+  .label-row {
+    display: grid;
+    grid-template-columns: 1fr 110px 60px;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(95,99,107,0.2);
+  }
+  .label-text { font-size: 13px; color: var(--text-secondary); }
+  .label-text .key { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); display: block; margin-top: 2px; }
+  .label-unit { font-size: 11px; color: var(--text-muted); text-align: right; padding-right: 8px; }
+  .polarity-pill {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(95,99,107,0.2);
+    color: var(--text-muted);
+    margin-left: 6px;
+  }
+  .polarity-pill.lower { background: rgba(192,132,252,0.15); color: var(--control); }
+  .polarity-pill.absolute { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .info-box {
+    background: rgba(96,165,250,0.05);
+    border-left: 3px solid var(--fitness);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin: 10px 0;
+  }
+  .file-drop {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    background: var(--bg-elevated);
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent);
+    background: rgba(255,107,53,0.05);
+  }
+  .preview-table {
+    width: 100%;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .preview-table th, .preview-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .preview-table th { color: var(--text-muted); font-weight: 500; }
+  .stat-card {
+    text-align: center;
+    padding: 16px;
+  }
+  .stat-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 36px;
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+  }
+  .score-bar-container {
+    background: rgba(95,99,107,0.2);
+    border-radius: 3px;
+    height: 6px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .summary-callout {
+    background: rgba(96,165,250,0.08);
+    border-left: 3px solid var(--fitness);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    margin: 10px 0;
+  }
+  .summary-callout strong { color: var(--text-primary); }
+  .summary-callout.good { background: rgba(34,197,94,0.08); border-left-color: #4ade80; }
+  .summary-callout.bad { background: rgba(239,68,68,0.08); border-left-color: #f87171; }
+  .summary-callout.warn { background: rgba(245,158,11,0.08); border-left-color: #fbbf24; }
+  details > summary { cursor: pointer; padding: 6px 0; }
+  details > summary::marker { color: var(--text-muted); }
+  .var-row {
+    display: grid;
+    grid-template-columns: 1fr 100px 60px 80px;
+    gap: 10px;
+    padding: 6px 0;
+    align-items: center;
+    border-bottom: 1px dashed rgba(95,99,107,0.2);
+    font-size: 12px;
+  }
+  .var-name { font-weight: 500; }
+  .var-key { color: var(--text-muted); font-family: monospace; font-size: 10px; }
+  .var-raw { font-family: monospace; text-align: right; color: var(--text-secondary); }
+  .var-score { font-family: monospace; text-align: right; font-weight: 700; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: monospace;
+  }
+  .badge-good { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .badge-warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .badge-bad { background: rgba(239,68,68,0.15); color: #f87171; }
+  .badge-stale { background: rgba(95,99,107,0.2); color: var(--text-muted); }
+  .hidden { display: none !important; }
+  .mech-mode-btn {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mech-mode-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+  .mech-mode-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+</style>
 </head>
-<body>
-  <!-- React 마운트 포인트 -->
-  <div id="root"></div>
+<body class="min-h-screen">
 
-  <!-- ─── 외부 라이브러리 ─────────────────────────────────────── -->
-  <!-- React 18 (UMD) -->
-  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<!-- Header -->
+<header class="border-b border-[#2a2c31] sticky top-0 z-40 backdrop-blur-md bg-black/70">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div>
+      <div class="display text-xl">📋 BBL 신규 선수 리포트 생성</div>
+      <div class="text-xs text-[var(--text-muted)] mt-1 mono">v29 134명 고교 코호트 기준 · 연령군 스케일링 적용</div>
+    </div>
+    <div class="text-xs text-[var(--text-muted)]">
+      <span id="cohort-info"></span>
+    </div>
+  </div>
+</header>
 
-  <!-- Babel standalone (JSX 변환) -->
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<main class="max-w-7xl mx-auto px-6 py-8">
 
-  <!-- PapaParse (CSV 파서) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <!-- Step 1: 선수 정보 -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">선수 정보 + 연령군</div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="text-xs text-[var(--text-muted)] block mb-1">선수 ID 또는 이름</label>
+        <input type="text" class="input-field" id="player-name" placeholder="P001 또는 홍길동" value="신규 선수">
+      </div>
+      <div>
+        <label class="text-xs text-[var(--text-muted)] block mb-1">측정 구속 (km/h, 선택)</label>
+        <input type="number" class="input-field" id="player-velo" placeholder="검증용 — 입력 안 해도 됨" step="0.1">
+      </div>
+      <div>
+        <label class="text-xs text-[var(--text-muted)] block mb-1">측정 일자</label>
+        <input type="text" class="input-field" id="player-date" placeholder="2026-05" value="">
+      </div>
+    </div>
+    
+    <div>
+      <label class="text-xs text-[var(--text-muted)] block mb-2">연령군 — 스케일링 기준</label>
+      <div class="flex gap-2 flex-wrap">
+        <button class="age-btn" data-age="중학" onclick="selectAge('중학')">중학</button>
+        <button class="age-btn active" data-age="고교" onclick="selectAge('고교')">고교 (BBL 기준)</button>
+        <button class="age-btn" data-age="대학" onclick="selectAge('대학')">대학</button>
+        <button class="age-btn" data-age="프로" onclick="selectAge('프로')">프로</button>
+      </div>
+      <div class="info-box mt-3">
+        <span id="age-desc">고교: BBL 134명 코호트 기준 (변경 없음)</span>
+      </div>
+    </div>
+  </section>
 
-  <!-- ─── BBL 전용 JS 모듈 ────────────────────────────────────── -->
-  <!-- 1) Biomechanics 분석 (BBLAnalysis) -->
-  <script src="analysis.js?v=17"></script>
+  <!-- Step 2: 체력 + 구속 (CSV 전용 + 드래그앤드롭) -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">체력 + 구속 변수 입력 (CSV 업로드)</div>
+    </div>
+    <div class="info-box">
+      <strong>지원 형식</strong> ① BBL 템플릿 — <code class="mono text-[11px]">field_key, value</code> (한 변수 한 행) ·
+      ② Hawkin/포스플레이트 와이드 포맷 — 첫 행이 컬럼명, 다음 행마다 한 선수.<br>
+      코호트와 매칭되는 측정값만 자동 적용됩니다. 코호트에 없는 컬럼(Shoulder IR, 30m Sprint 등)은 자동으로 무시.
+      <code class="mono text-[11px]">Name</code>·<code class="mono text-[11px]">Date</code>·<code class="mono text-[11px]">Max Velocity</code> 컬럼이 있으면 <strong>Step 1의 선수명·측정일·구속도 자동 입력</strong>됩니다.
+    </div>
 
-  <!-- 2) ForceDecks CSV 파서 (BBLFitness) — 수동 입력 fallback용 -->
-  <script src="fitness.js?v=17"></script>
+    <div class="file-drop mb-3" id="fitness-drop-zone" onclick="document.getElementById('fitness-csv-upload').click()">
+      <div class="text-3xl mb-1">📤</div>
+      <div class="text-sm font-medium">CSV 파일을 드래그 앤 드롭하거나 클릭해서 선택</div>
+      <div class="text-xs text-[var(--text-muted)] mt-1">.csv 파일 · BBL 템플릿 또는 와이드 포맷</div>
+      <input type="file" id="fitness-csv-upload" accept=".csv" style="display:none;" onchange="handleCsvUpload(event, 'fitness')">
+    </div>
 
-  <!-- 2b) 선수 메타 CSV 파서 (BBLPlayerMeta) — 메인 입력 경로 -->
-  <script src="player_meta.js?v=17"></script>
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button class="btn btn-secondary text-xs" onclick="downloadTemplate('fitness')">📥 BBL 템플릿 다운로드</button>
+      <button class="btn btn-secondary text-xs" onclick="clearInputs('fitness')">🗑 초기화</button>
+    </div>
 
-  <!-- 3) 데이터 빌더 (BBLDataBuilder) -->
-  <script src="data_builder.js?v=17"></script>
+    <!-- 선수 선택 (와이드 CSV에 여러 선수가 있을 때만 노출) -->
+    <div id="fitness-player-selector" class="hidden mb-4">
+      <label class="text-xs text-[var(--text-muted)] block mb-1">선수 선택 (CSV에 여러 명 포함됨)</label>
+      <select class="input-field" id="fitness-player-select" onchange="selectPlayerFromCsv(this.value)"></select>
+    </div>
 
-  <!-- ─── React 컴포넌트 (JSX, Babel 변환) ────────────────────── -->
-  <!-- 4) 차트 컴포넌트 (Radar / Energy / Sequence / Angular / etc.) -->
-  <script type="text/babel" data-presets="react" src="charts.jsx?v=17"></script>
+    <!-- 업로드 결과 요약 -->
+    <div id="fitness-upload-status" class="hidden">
+      <div id="fitness-upload-summary" class="info-box" style="border-left-color: var(--good); background: rgba(74,222,128,0.05);"></div>
+      <details class="mt-2">
+        <summary class="text-xs text-[var(--text-secondary)] py-1">📋 로드된 변수 보기</summary>
+        <div id="fitness-loaded-table" class="mt-3"></div>
+      </details>
+    </div>
 
-  <!-- 5) 대시보드 (Report 7 — window.BBLDashboardApp 으로 export) -->
-  <script type="text/babel" data-presets="react" src="dashboard.jsx?v=17"></script>
+    <!-- 빈 상태 -->
+    <div id="fitness-empty-state" class="text-center text-sm text-[var(--text-muted)] py-6 border border-dashed border-[var(--border)] rounded">
+      아직 업로드된 데이터가 없습니다. CSV 파일을 업로드하세요.
+    </div>
+  </section>
 
-  <!-- 6) 메인 앱 (입력 폼 + 라우터) -->
-  <script type="text/babel" data-presets="react" src="app.jsx?v=17"></script>
+  <!-- Step 3: 메카닉 (CSV 전용 + 드래그앤드롭) -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">메카닉 변수 입력 (CSV 업로드)</div>
+    </div>
+    <div class="info-box">
+      <strong>지원 형식</strong> ① Uplift Capture raw 시계열 CSV (Trial_XXXX.csv) — 이벤트 프레임 + FC 시점 시계열 자동 추출 ·
+      ② BBL 메카닉 템플릿 — <code class="mono text-[11px]">field_key, value</code> ·
+      ③ 와이드 포맷 — 컬럼명에 BBL 변수 키.<br>
+      코호트에 분포가 있는 변수만 점수 산출에 사용됩니다 (★ Phase 2 변수는 자동 제외).
+    </div>
+
+    <div class="file-drop mb-3" id="mech-drop-zone" onclick="document.getElementById('mech-csv-upload').click()">
+      <div class="text-3xl mb-1">📤</div>
+      <div class="text-sm font-medium">메카닉 CSV 파일을 드래그 앤 드롭하거나 클릭해서 선택</div>
+      <div class="text-xs text-[var(--text-muted)] mt-1">.csv 파일 · Uplift raw 또는 BBL 템플릿/와이드 포맷</div>
+      <input type="file" id="mech-csv-upload" accept=".csv" style="display:none;" onchange="handleCsvUpload(event, 'mechanics')">
+    </div>
+
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button class="btn btn-secondary text-xs" onclick="downloadTemplate('mechanics')">📥 BBL 메카닉 템플릿 다운로드</button>
+      <button class="btn btn-secondary text-xs" onclick="clearInputs('mechanics')">🗑 초기화</button>
+    </div>
+
+    <!-- 선수 선택 (와이드 CSV 다중 행) -->
+    <div id="mech-player-selector" class="hidden mb-4">
+      <label class="text-xs text-[var(--text-muted)] block mb-1">선수 선택 (CSV에 여러 명 포함됨)</label>
+      <select class="input-field" id="mech-player-select" onchange="selectMechanicsPlayerFromCsv(this.value)"></select>
+    </div>
+
+    <!-- 업로드 결과 요약 -->
+    <div id="mech-upload-status" class="hidden">
+      <div id="mech-upload-summary" class="info-box" style="border-left-color: var(--accent); background: rgba(255,107,53,0.05);"></div>
+      <details class="mt-2">
+        <summary class="text-xs text-[var(--text-secondary)] py-1">📋 로드된 변수 보기</summary>
+        <div id="mech-loaded-table" class="mt-3"></div>
+      </details>
+    </div>
+
+    <!-- 빈 상태 -->
+    <div id="mech-empty-state" class="text-center text-sm text-[var(--text-muted)] py-6 border border-dashed border-[var(--border)] rounded">
+      아직 업로드된 데이터가 없습니다. CSV 파일을 업로드하세요.
+    </div>
+  </section>
+
+  <!-- Step 4: 계산 + 리포트 -->
+  <section class="text-center mb-8">
+    <button class="btn btn-primary text-base px-12 py-4" onclick="generateReport()">
+      🎯 리포트 생성
+    </button>
+    <div class="text-xs text-[var(--text-muted)] mt-2">입력된 변수만으로 점수·구속 예측·코칭 해설을 생성합니다</div>
+  </section>
+
+  <!-- 리포트 영역 -->
+  <section id="report-area" class="hidden"></section>
+
+</main>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// 코호트 데이터 (v29 134명 export)
+// ════════════════════════════════════════════════════════════════════
+const COHORT = {"meta":{"cohort_size":234,"cohort_n_players":133,"description":"BBL Lab 134명 고교 1년 투수 코호트 (Spring 2025 + Fall 2025)","source":"BBL v29 cohort_data"},"category_vars":{"F1_Strength":[["IMTP Peak Vertical Force [N]","IMTP 절대 수직력","N",0,"higher"],["Grip Strength","악력","kg",1,"higher"]],"F2_Power":[["CMJ Peak Power [W]","CMJ 절대파워","W",0,"higher"],["SJ Peak Power [W]","SJ 절대파워","W",0,"higher"],["CMJ Jump Height (Flight Time) [cm]","CMJ 점프높이","cm",1,"higher"],["SJ Jump Height (Flight Time) [cm]","SJ 점프높이","cm",1,"higher"]],"F3_Reactivity":[["CMJ RSI-modified [m/s]","CMJ RSI-mod","m/s",2,"higher"],["SJ RSI-modified [m/s]","SJ RSI-mod","m/s",2,"higher"],["EUR","EUR (CMJ/SJ 비)","",2,"higher"]],"F4_Body":[["Height[M]","신장","m",2,"higher"],["Weight[KG]","체중","kg",0,"higher"],["BMI","BMI","",1,"higher"]],"F5_LowerBody":[["CMJ Peak Power / BM [W/kg]","CMJ 단위파워","W/kg",1,"higher"],["SJ Peak Power / BM [W/kg]","SJ 단위파워","W/kg",1,"higher"],["IMTP Peak Vertical Force / BM [N/kg]","IMTP/체중","N/kg",1,"higher"]],"F6_VelocityIndex":[["CMJ Concentric Impulse [N s]","CMJ 임펄스","N·s",1,"higher"],["CMJ RSI-modified [m/s]","CMJ RSI-mod","m/s",2,"higher"],["IMTP Peak Vertical Force [N]","IMTP 절대 수직력","N",0,"higher"]],"C1_Foundation":[["stride_norm_height","Stride 길이 (신장 정규화)","비율",1,"higher"],["trunk_rotation_at_fc","몸통 회전 @ FC (닫힘 정도)","°",1,"absolute"],["hip_shoulder_sep_at_fc","X-Factor @ FC","°",1,"higher"],["trunk_forward_tilt_at_fc","몸통 전방 기울기 @ FC ★","°",1,"lower"]],"C2_HipDrive":[["max_pelvis_rot_vel_dps","골반 회전 속도 max","°/s",1,"higher"],["hip_ir_vel_max_drive","뒷다리 고관절 내회전 속도","°/s",1,"higher"],["max_cog_velo","몸통 COM 전진 속도 max ★","m/s",1,"higher"]],"C3_TrunkPower":[["max_trunk_twist_vel_dps","몸통 회전 속도 max","°/s",1,"higher"],["trunk_flex_vel_max","몸통 굴곡 속도 max","°/s",1,"higher"],["peak_x_factor","Peak X-Factor ★","°",1,"higher"]],"C4_LeadLegBlock":[["lead_knee_ext_vel_max","앞다리 무릎 신전 속도 max","°/s",1,"higher"],["lead_knee_ext_change_fc_to_br","앞다리 무릎 신전량 (FC→BR)","°",1,"higher"],["com_decel_pct","COM 감속률 (블로킹 효율)","%",1,"higher"],["lead_knee_amortization_ms","앞무릎 SSC Amortization 시간 ★","ms",1,"lower"]],"C5_Sequencing":[["pelvis_to_trunk_lag_ms","Pelvis → Trunk Lag","ms",1,"higher"],["trunk_to_arm_lag_ms","Trunk → Arm Lag","ms",1,"higher"],["proper_sequence","Pelvis-Trunk-Arm 순서","0 or 1",1,"higher"]],"C6_ArmCocking":[["max_shoulder_ER_deg","최대 어깨 외회전 (MER)","°",1,"higher"],["shoulder_h_abd_at_fc","어깨 수평 외전 @ FC","°",1,"higher"]],"P1_ReleaseConsistency":[["wrist_3d_sd_cm","손목 3D 위치 SD","cm",1,"lower"]],"P2_ArmSlot":[["arm_slot_sd_deg","팔 슬롯 각도 SD","°",2,"lower"],["arm_slot_mean_deg","팔 슬롯 평균 각도","°",1,"higher"]],"P3_ReleaseHeight":[["release_height_sd_cm","릴리스 높이 SD","cm",2,"lower"],["release_height_m","릴리스 평균 높이","m",2,"higher"]],"P4_TimingConsistency":[["mer_to_br_sd_ms","MER→BR 시간 SD","ms",1,"lower"],["proper_sequence_pct","Pelvis→Trunk→Arm 순서 비율","%",0,"higher"]],"P5_StrideConsistency":[["stride_sd_cm","Stride 길이 SD","cm",2,"lower"],["stride_mean_m","Stride 평균 길이","m",2,"higher"]],"P6_TrunkConsistency":[["trunk_tilt_sd_deg","몸통 기울기 SD","°",2,"lower"]]},"category_meta":{"F1_Strength":{"name":"근력","short_desc":"하체·상체 최대 근력","meaning":"폭발적 동작의 기반이 되는 최대 근력. 하체(IMTP) + 그립 근력으로 평가.","method":"IMTP 최대 수직력, 체중 정규화 IMTP, 그립 근력의 백분위 평균","interpretation":[["75-100","근력 우수 — 폭발적 동작의 기반 충분"],["50-75","평균 근력 — 추가 강화 여지 있음"],["25-50","근력 부족 — 웨이트 트레이닝 비중 ↑"],["0-25","근력 매우 부족 — 우선 보강 필요"]],"coaching":"데드리프트, 스쿼트, 그립 강화, IMTP 트레이닝","reference":"Sakurai (2024), Driveline Strength Standards"},"F2_Power":{"name":"절대 파워","short_desc":"절대 출력 (W·N·s)","meaning":"CMJ·SJ로 측정되는 폭발적 출력. 구속과 가장 직접적으로 연관되는 체력 요소.","method":"CMJ/SJ 점프 높이·피크 파워·체중 정규화 파워의 백분위 평균","interpretation":[["75-100","파워 우수 — 투구 폭발력의 체력 기반 충분"],["50-75","평균 파워 — 플라이오메트릭 강화"],["25-50","파워 부족 — SSC 활용 훈련 필요"],["0-25","파워 매우 부족 — 점프 트레이닝 우선"]],"coaching":"점프 스쿼트, 박스 점프, 메디신볼 던지기, 올림픽 리프트","reference":"Lehman et al. (2013), Driveline KineticArm"},"F3_Reactivity":{"name":"반응성 (SSC)","short_desc":"신축단축주기 효율","meaning":"근육이 빠르게 늘어났다가 즉시 수축하는 SSC(Stretch-Shortening Cycle) 효율. 투구의 앞다리 블로킹·몸통 회전과 직결.","method":"CMJ/SJ RSI-modified와 EUR (CMJ/SJ 비율)의 백분위 평균","interpretation":[["75-100","SSC 활용 우수 — 효율적 에너지 전달"],["50-75","평균적 SSC, 반응성 향상 여지"],["25-50","SSC 효율 낮음 — concentric만 의존"],["0-25","SSC 매우 낮음 — 단순 근력→반응적 전환 훈련"]],"coaching":"드롭 점프, 데모스 짧은 접지 시간 점프, 플라이오메트릭","reference":"McMahon (2017), Komi (2003)"},"F4_Body":{"name":"체격","short_desc":"신체 구성","meaning":"구속과 관련된 신체 크기. 신장은 릴리스 높이·레버 길이, 체중은 운동량과 관련.","method":"신장·체중·BMI의 백분위 평균","interpretation":[["—","신체 크기는 직접 향상 어려움 — 다른 카테고리에 더 집중"],["","체중 증가는 근육량·체지방 비율 함께 고려"]],"coaching":"영양 섭취, 근육량 증가 (체지방 < 15%)","reference":"Werner et al. (2008)"},"F5_LowerBody":{"name":"체중당 파워","short_desc":"체중 정규화 출력 (W/kg·N/kg)","meaning":"체중당 출력 파워. 작은 체격이라도 효율적으로 파워를 낼 수 있는지 평가.","method":"CMJ·SJ Peak Power/BM, IMTP/BM의 백분위 평균","interpretation":[["75-100","체중당 파워 우수 — 효율적 운동 능력"],["50-75","평균 — 하체 강화 또는 체중 조절"],["25-50","체중 대비 파워 부족"],["0-25","심각한 부족 — 체구성 개선 + 파워 훈련"]],"coaching":"스피드 스쿼트, 점프 트레이닝, 체지방 관리","reference":"Driveline체중 정규화 표준"},"F6_VelocityIndex":{"name":"복합 폭발력","short_desc":"임펄스·반응성·근력 통합","meaning":"학술 연구에서 구속과 가장 강하게 연관되는 체력 변수 셋. 종합 진단용.","method":"CMJ Concentric Impulse, CMJ RSI-mod, IMTP 절대치의 백분위 평균","interpretation":[["75-100","구속 잠재력 매우 높음"],["50-75","평균적 구속 잠재력"],["25-50","구속 향상 위해 핵심 변수 강화 필요"]],"coaching":"Concentric impulse 향상 훈련, Reactive 점프","reference":"Sakurai (2024), Driveline KineticArm"},"C1_Foundation":{"name":"FC시 자세","short_desc":"FC 시점 X-Factor 형성과 정렬","meaning":"Foot Contact 시점의 신체 정렬 — 몸통은 닫혀 있고 골반은 약간 열려 있어 두 분절 사이에 X-Factor(꼬임)가 형성되어야 SSC를 통한 폭발적 회전 가속의 발판이 됨. Flying open(몸통이 일찍 열리는 현상) 방지가 핵심.","method":"Stride 길이(신장 정규화), 몸통 회전 절대값(닫힘 정도), FC 시점 X-Factor의 백분위 평균. ★ Phase 2: 몸통 전방 기울기(FC 시 뒤로 기울인 상태)가 추가될 예정.","interpretation":[["75-100","FC 자세 우수 — X-Factor 형성과 닫힘 자세 모두 양호"],["50-75","평균 FC 자세 — 일부 변수 보강 가능"],["25-50","FC 자세 부족 — Flying open 경향 점검 필요"],["0-25","FC 자세 심각 — 와인드업·정렬 코칭 우선"]],"coaching":"거울/비디오 피드백으로 FC 시점 몸통 닫힘 확인, X-Factor 인식 드릴(메디신볼 회전), Stride 길이 점검","reference":"Stodden (2001), Werner (2008), Driveline"},"C2_HipDrive":{"name":"하체 드라이브","short_desc":"골반 회전 + 하체 드라이브 출력","meaning":"하체에서 시작되는 가속 출력 — 골반 회전 속도와 뒷다리 고관절 내회전 속도, 그리고 무게중심을 홈플레이트 방향으로 가속시키는 능력. 드라이브 단계(가속)의 출력을 평가 (제동/블로킹은 C4로 분리됨).","method":"골반 회전 속도, 뒷다리 고관절 내회전 속도의 백분위 평균. ★ Phase 2: 무게중심 최대 전진 속도(max_cog_velo) 추가 예정.","interpretation":[["75-100","하체 드라이브 우수 — 골반 회전과 뒷다리 출력 모두 양호"],["50-75","평균 드라이브 — 골반 회전 또는 hip IR 향상 여지"],["25-50","드라이브 부족 — 뒷다리 활용 코칭 필요"],["0-25","드라이브 심각 — 우선 보강 카테고리"]],"coaching":"뒷다리 고관절 내회전 드릴, 골반 회전 가속 훈련, COM 전진 속도 향상을 위한 스트라이드 파워 강화","reference":"Matsuo (2001), Kageyama (2014)"},"C3_TrunkPower":{"name":"몸통 파워","short_desc":"몸통 회전·굴곡 출력과 SSC 활용도","meaning":"몸통의 실제 출력 — 비틀림 가속 + 굴곡 가속이 핵심. 진짜 SSC 활용도는 스트라이드 직전 정점에 도달하는 Peak X-Factor가 직접적 지표. Driveline·Stodden 연구에서 구속의 가장 강한 단일 결정 요인 (모델 가중치 37%로 최대).","method":"몸통 회전 속도 max, 몸통 굴곡 속도 max의 백분위 평균. ★ Phase 2: Peak X-Factor (스트라이드 직전 골반-몸통 꼬임 최대값) 추가 예정.","interpretation":[["75-100","몸통 출력 우수 — 회전·굴곡 가속 모두 양호"],["50-75","평균 출력 — 비틀림 또는 굴곡 속도 향상 여지"],["25-50","몸통 출력 부족 — 코어·회전 강화 필요"],["0-25","몸통 출력 심각 — 우선 보강 카테고리"]],"coaching":"메디신볼 회전 던지기(rotational med-ball throws), 몸통 분절 회전 드릴, 코어 회전 가속 훈련","reference":"Stodden (2001), Aguinaldo (2007), Driveline"},"C4_LeadLegBlock":{"name":"앞다리 블로킹 및 신전 활용","short_desc":"앞다리 SSC + 블로킹 + COM 감속","meaning":"앞다리(stride 다리)의 제동 단계 출력 — 착지 시 굴곡되었다가 빠르게 신전하면서 운동 사슬에 에너지를 전달하는 SSC(Stretch-Shortening Cycle), 그리고 무게중심 감속(블로킹)을 통한 회전 가속 효율을 평가. C2(가속/드라이브)와 분리된 제동 단계의 출력.","method":"앞다리 무릎 신전 속도, 신전 변화량(FC→BR), COM 감속률의 백분위 평균. ★ Phase 2: SSC amortization 시간(굴곡→신전 전환 소요 시간) 추가 예정.","interpretation":[["75-100","앞다리 블로킹 우수 — SSC 활용과 COM 감속 모두 양호"],["50-75","평균 — 신전 속도 또는 블로킹 효율 향상 여지"],["25-50","블로킹 부족 — 무너지는 앞다리, COM 감속 효율 저하"],["0-25","블로킹 심각 — 앞다리 안정성·SSC 회복 우선"]],"coaching":"드롭 점프, 한 다리 SSC 점프(plyometric), 앞다리 강화 + 블로킹 시 안정성 드릴","reference":"Kageyama (2014), Wood-Smith (2019, Driveline)"},"C5_Sequencing":{"name":"운동사슬 시퀀싱","short_desc":"타이밍 적정성","meaning":"골반 → 몸통 → 팔 순서로 회전 속도가 정점을 찍는 운동 사슬의 타이밍. 순서뿐 아니라 lag 시간(40-50ms 최적)이 중요.","method":"Pelvis-Trunk lag (45ms 최적, 가우시안 점수), Trunk-Arm lag (45ms 최적), 순서(0/1)","interpretation":[["75-100","이상적 시퀀싱 — Pelvis-Trunk-Arm 순서 + 적정 lag"],["50-75","평균 — 순서는 OK, lag 최적화 여지"],["25-50","Lag 너무 짧거나 김 — 타이밍 드릴 필요"],["0-25","운동사슬 깨짐 — 순서 자체 재학습"]],"coaching":"메디신볼 회전 던지기, 분절적 회전 드릴, 비디오 피드백","reference":"Aguinaldo (2007), Driveline KineticArm"},"C6_ArmCocking":{"name":"어깨 코킹","short_desc":"어깨 가동범위","meaning":"팔이 던질 준비를 하는 코킹 자세의 가동범위. MER(최대 외회전)과 어깨 수평 외전을 평가. 한국 고1에서 구속 예측력은 약하나 부상 위험·릴리스 안정성에 중요.","method":"최대 어깨 외회전(MER), FC 시점 어깨 수평 외전의 백분위 평균","interpretation":[["75-100","어깨 가동범위 우수"],["50-75","평균"],["25-50","어깨 가동범위 부족 — 모빌리티 훈련 필요"],["0-25","심각한 가동범위 부족 — 부상 위험 검토"]],"coaching":"어깨 외회전 모빌리티, Sleeper Stretch, 견갑골 안정화","reference":"Werner (2008), Reinold (2009)"},"P1_ReleaseConsistency":{"name":"릴리스 점 일관성 (3D)","short_desc":"손목 X·Y·Z 결합 SD","meaning":"여러 trial에서 릴리스 시점 손목의 3차원 위치가 얼마나 일관된지. 제구의 가장 직접적 지표.","method":"Trial-to-trial 손목 X·Y·Z SD를 결합한 3D SD (cm). 작을수록 좋음.","interpretation":[["75-100","릴리스 매우 일관 — 제구 우수"],["50-75","평균적 일관성"],["25-50","릴리스 변동 — 제구 불안정"],["0-25","릴리스 매우 변동 — 폼 안정화 우선"]],"coaching":"반복 폼 연습, 거울·비디오 피드백, 셋업 일관성","reference":"Whiteley (2018), Driveline Pitch Design"},"P2_ArmSlot":{"name":"팔 슬롯 안정성","short_desc":"팔 각도 일관성","meaning":"Trial마다 팔 슬롯(어깨-팔꿈치 각도)이 얼마나 일관된지. 다른 슬롯에서 던지면 구질이 달라짐.","method":"팔 슬롯 각도의 trial-to-trial SD (degrees)","interpretation":[["75-100","슬롯 매우 일관"],["50-75","평균"],["25-50","슬롯 변동"],["0-25","슬롯 매우 변동 — 일관 폼 우선"]],"coaching":"같은 슬롯 반복 연습, Tilt drill","reference":"Whiteley (2018)"},"P3_ReleaseHeight":{"name":"릴리스 높이 안정성","short_desc":"수직 위치만 (Y SD)","meaning":"릴리스 시 손의 높이가 일관된지. 변동이 크면 공이 위/아래로 벗어남.","method":"손목 Y 좌표의 trial-to-trial SD (cm)","interpretation":[["75-100","릴리스 높이 매우 일관"],["50-75","평균"],["25-50","높이 변동"],["0-25","높이 매우 변동"]],"coaching":"릴리스 포인트 표시판, 일관 폼 훈련","reference":"Whiteley (2018)"},"P4_TimingConsistency":{"name":"타이밍 일관성","short_desc":"운동사슬 타이밍 안정성","meaning":"운동 사슬 순서(Pelvis-Trunk-Arm)가 매번 동일한지 + MER→BR 시간 일관성.","method":"proper_sequence 비율(%) + MER→BR 시간 SD (ms)","interpretation":[["75-100","타이밍 매우 일관"],["50-75","평균"],["25-50","타이밍 변동"],["0-25","타이밍 매우 불안정"]],"coaching":"템포 메트로놈 드릴, 메디신볼 타이밍","reference":"Aguinaldo (2007)"},"P5_StrideConsistency":{"name":"스트라이드 일관성","short_desc":"발 위치 일관성","meaning":"매 trial 앞발 착지 위치(stride 길이)가 일관된지. 변동이 크면 모든 후속 단계가 무너짐.","method":"Stride 길이의 trial-to-trial SD (cm)","interpretation":[["75-100","발 위치 매우 일관"],["50-75","평균"],["25-50","발 위치 변동"],["0-25","발 위치 매우 변동"]],"coaching":"착지 마크 훈련, 일관 셋업","reference":"Driveline Stride 표준"},"P6_TrunkConsistency":{"name":"몸통 자세 일관성","short_desc":"몸통 기울기 안정성","meaning":"BR 시점 몸통 전방 기울기가 일관된지. 변동이 크면 공이 높낮이 차이.","method":"몸통 전방 기울기의 trial-to-trial SD (degrees)","interpretation":[["75-100","몸통 자세 매우 일관"],["50-75","평균"],["25-50","몸통 변동"],["0-25","몸통 매우 변동"]],"coaching":"몸통 안정성 훈련, 코어","reference":"Werner (2008)"}},"var_distributions":{"BMI":{"mean":24.656410256410258,"stdev":2.0837974832355926,"median":24.8,"q25":23.4,"q75":26.0,"n":234},"CMJ Concentric Impulse [N s]":{"mean":204.04444444444445,"stdev":32.53141352599125,"median":205.6,"q25":184.0,"q75":224.9,"n":234},"CMJ Jump Height (Flight Time) [cm]":{"mean":35.79017094017094,"stdev":5.298670735065246,"median":35.55,"q25":32.3,"q75":38.6,"n":234},"CMJ Peak Power / BM [W/kg]":{"mean":47.91153846153846,"stdev":8.68814960424397,"median":47.55,"q25":43.2,"q75":51.8,"n":234},"CMJ Peak Power [W]":{"mean":3875.235042735043,"stdev":711.404468574922,"median":3917.0,"q25":3411,"q75":4351,"n":234},"CMJ RSI-modified [m/s]":{"mean":0.4582051282051282,"stdev":0.11514585178758753,"median":0.45,"q25":0.37,"q75":0.51,"n":234},"EUR":{"mean":1.1189270386266095,"stdev":0.09121383930785212,"median":1.11,"q25":1.06,"q75":1.17,"n":233},"Grip Strength":{"mean":51.215811965811966,"stdev":7.532302823079317,"median":50.75,"q25":45.6,"q75":56.1,"n":234},"Height[M]":{"mean":1.814059829059829,"stdev":0.043120908085680955,"median":1.81,"q25":1.78,"q75":1.84,"n":234},"IMTP Peak Vertical Force / BM [N/kg]":{"mean":27.157179487179487,"stdev":3.11708330327847,"median":26.765,"q25":25.31,"q75":28.84,"n":234},"IMTP Peak Vertical Force [N]":{"mean":2198.076923076923,"stdev":298.9264526607894,"median":2208.5,"q25":2004,"q75":2413,"n":234},"SJ Jump Height (Flight Time) [cm]":{"mean":32.144206008583694,"stdev":5.0463091147407395,"median":31.9,"q25":28.4,"q75":35.2,"n":233},"SJ Peak Power / BM [W/kg]":{"mean":44.26923076923077,"stdev":10.418759587257734,"median":46.349999999999994,"q25":37.9,"q75":50.3,"n":234},"SJ Peak Power [W]":{"mean":3583.3504273504273,"stdev":872.6988656747706,"median":3693.0,"q25":3038,"q75":4178,"n":234},"SJ RSI-modified [m/s]":{"mean":0.736824034334764,"stdev":0.20177712381665805,"median":0.72,"q25":0.59,"q75":0.87,"n":233},"Weight[KG]":{"mean":81.17521367521367,"stdev":7.629234556050069,"median":82.0,"q25":76,"q75":85,"n":234},"arm_slot_mean_deg":{"mean":18.856409046258335,"stdev":18.372134901215798,"median":20.698416886975036,"q25":13.996130468743315,"q75":29.4395606248666,"n":234},"arm_slot_sd_deg":{"mean":4.900470498579051,"stdev":8.282774203943637,"median":2.121894369749544,"q25":1.5429496528729083,"q75":3.612408809211145,"n":234},"hip_shoulder_sep_at_fc":{"mean":19.504590440461094,"stdev":11.116268549069169,"median":19.05855851099168,"q25":9.741986152833618,"q75":28.514031739753108,"n":199},"lead_knee_ext_vel_max":{"mean":347.11646314697845,"stdev":90.15519709420674,"median":354.24967917169784,"q25":280.9015238909508,"q75":408.5686267582955,"n":196},"max_pelvis_rot_vel_dps":{"mean":443.05009876903756,"stdev":119.05501557270274,"median":473.80278361232047,"q25":402.8204188053539,"q75":510.56164066017686,"n":199},"max_shoulder_ER_deg":{"mean":191.10183546652718,"stdev":16.828501280334688,"median":190.7855539118517,"q25":180.7444166669032,"q75":202.34044518927112,"n":199},"max_trunk_twist_vel_dps":{"mean":469.486354854943,"stdev":76.19740762182441,"median":462.6147350183114,"q25":423.4365425221693,"q75":518.8435444690476,"n":199},"mer_to_br_sd_ms":{"mean":817.1950779106086,"stdev":723.6926298460312,"median":845.8790130603522,"q25":13.3832148175213,"q75":1309.80427933242,"n":234},"pelvis_to_trunk_lag_ms":{"mean":26.17661704808114,"stdev":52.528593045450506,"median":27.17275148456814,"q25":0.0,"q75":56.43152820066696,"n":199},"proper_sequence":{"mean":0.8592964824120602,"stdev":0.3412714011311061,"median":1.0,"q25":1.0,"q75":1.0,"n":199},"proper_sequence_pct":{"mean":84.16948920818889,"stdev":28.594433454240136,"median":100.0,"q25":80.0,"q75":100.0,"n":234},"release_height_m":{"mean":0.45549310095882584,"stdev":0.10161049869729089,"median":0.4626745139554827,"q25":0.3971551915892684,"q75":0.5326936783415002,"n":234},"release_height_sd_cm":{"mean":3.1696409725232297,"stdev":3.3445046774812335,"median":1.7746954641633228,"q25":1.3121383959693085,"q75":3.0929516110207125,"n":234},"shoulder_h_abd_at_fc":{"mean":27.499581316335494,"stdev":17.085578349929698,"median":29.0924891177089,"q25":14.771459543145138,"q75":39.41985996682741,"n":199},"stride_mean_m":{"mean":1.0065121952581741,"stdev":0.10251720332262695,"median":1.0152487693182934,"q25":0.95756669353544,"q75":1.0632617002,"n":231},"stride_sd_cm":{"mean":2.530398559224618,"stdev":3.4003715039812312,"median":1.6342460508883838,"q25":1.171673599916608,"q75":2.440791437431004,"n":231},"trunk_flex_vel_max":{"mean":536.2444210187423,"stdev":99.1078832297011,"median":538.534353186805,"q25":472.037310108982,"q75":589.5140754672731,"n":198},"trunk_rotation_at_fc":{"mean":-34.598973096753134,"stdev":93.79460413257809,"median":-57.85787460706986,"q25":-87.96012512178014,"q75":-32.7090328079662,"n":198},"trunk_tilt_sd_deg":{"mean":2.626099776710536,"stdev":3.923713771580525,"median":1.4786377550978116,"q25":1.1674573754037532,"q75":2.032687647535277,"n":222},"trunk_to_arm_lag_ms":{"mean":27.670242040163888,"stdev":60.60396572376721,"median":33.433965480353095,"q25":12.53567904760668,"q75":45.99367151008738,"n":199},"wrist_3d_sd_cm":{"mean":17.395894072856525,"stdev":18.369054902866544,"median":10.867320508825491,"q25":7.259492260368552,"q75":17.57268068808163,"n":234}},"var_sorted_lookup":{"BMI":[18.9,18.9,19.7,19.7,20.1,20.1,20.4,20.4,20.6,20.7,20.7,20.9,21.1,21.1,21.1,21.2,21.2,21.4,21.4,21.5,21.5,21.5,21.8,21.9,21.9,22.0,22.0,22.1,22.1,22.1,22.2,22.2,22.2,22.3,22.5,22.8,22.9,23.0,23.0,23.0,23.0,23.0,23.1,23.1,23.1,23.1,23.1,23.1,23.1,23.2,23.2,23.2,23.2,23.2,23.4,23.4,23.4,23.4,23.4,23.4,23.4,23.4,23.5,23.5,23.5,23.5,23.5,23.6,23.6,23.7,23.7,23.7,23.8,23.8,23.9,23.9,23.9,23.9,24.0,24.0,24.0,24.0,24.1,24.1,24.2,24.2,24.2,24.2,24.2,24.3,24.3,24.3,24.3,24.3,24.3,24.3,24.4,24.4,24.4,24.4,24.4,24.5,24.5,24.5,24.5,24.6,24.6,24.6,24.7,24.7,24.7,24.7,24.7,24.7,24.8,24.8,24.8,24.8,24.8,24.8,24.8,24.8,24.8,24.8,24.9,24.9,24.9,24.9,25.0,25.0,25.0,25.0,25.0,25.0,25.0,25.0,25.1,25.1,25.1,25.1,25.1,25.1,25.1,25.1,25.2,25.2,25.2,25.2,25.2,25.2,25.2,25.3,25.3,25.4,25.4,25.4,25.5,25.5,25.5,25.5,25.5,25.5,25.6,25.6,25.6,25.6,25.7,25.7,25.7,25.7,25.7,26.0,26.0,26.0,26.0,26.0,26.0,26.1,26.1,26.1,26.1,26.2,26.2,26.3,26.3,26.3,26.4,26.5,26.5,26.5,26.6,26.6,26.6,26.7,26.7,26.8,26.8,26.8,26.8,26.8,26.9,26.9,27.1,27.1,27.1,27.2,27.2,27.2,27.2,27.2,27.2,27.5,27.5,27.5,27.5,27.5,27.5,27.5,27.7,27.7,27.7,27.7,27.8,27.8,27.8,27.8,28.4,28.4,28.4,28.7,28.7,29.0,30.8,30.8],"CMJ Concentric Impulse [N s]":[123.2,125.0,125.4,125.9,126.9,134.7,136.2,140.9,142.4,143.2,144.1,144.5,145.3,147.2,148.7,149.3,150.0,151.9,152.1,153.8,156.1,156.2,157.3,161.0,162.1,162.9,164.4,165.4,165.8,165.9,166.4,167.0,167.6,168.7,168.7,169.2,169.3,169.7,171.8,172.4,172.9,173.5,173.5,174.4,174.9,175.5,175.6,176.4,176.5,177.5,177.7,177.7,178.1,179.6,179.9,181.3,182.1,182.6,184.0,184.4,184.6,185.3,185.7,186.2,186.4,187.2,187.6,188.8,188.8,190.1,190.4,191.1,191.1,191.2,191.5,193.1,193.5,193.7,193.7,194.2,195.1,195.9,196.8,196.9,197.0,197.2,197.6,197.8,197.8,197.9,198.5,198.7,198.7,199.5,199.7,200.0,200.5,200.7,201.2,201.8,202.1,202.7,203.2,203.6,203.6,203.7,203.7,204.0,204.4,204.5,204.5,204.7,205.0,205.4,205.4,205.5,205.6,205.6,205.8,205.8,205.9,206.0,206.4,206.6,206.8,207.1,207.4,207.5,208.0,208.9,209.1,210.3,211.4,211.5,211.5,211.6,212.6,213.0,213.0,213.2,213.4,213.7,213.7,214.0,214.3,215.2,215.3,215.8,216.2,216.3,216.4,216.5,217.0,217.0,217.6,218.1,218.3,218.5,219.4,219.8,220.4,220.4,221.1,221.3,221.5,221.7,222.9,223.3,223.4,223.6,223.6,223.7,223.8,224.6,224.6,224.9,225.2,225.5,225.7,226.0,226.3,226.6,226.9,227.0,227.2,227.5,227.8,228.2,229.5,231.3,231.7,233.2,233.2,233.6,234.2,234.4,235.3,236.6,237.2,238.7,239.1,239.4,239.5,239.9,239.9,240.9,240.9,241.2,241.3,241.8,241.9,243.0,244.5,247.7,247.9,248.2,248.2,249.2,253.0,253.7,254.2,256.3,257.6,257.7,259.2,259.3,260.2,264.4,267.7,271.4,272.0,277.5,281.6,289.2],"CMJ Jump Height (Flight Time) [cm]":[22.4,25.1,25.8,25.8,26.4,26.6,27.2,27.3,27.6,27.7,27.8,27.8,27.8,27.9,28.0,28.1,28.2,28.2,28.2,28.4,28.6,28.7,28.8,29.1,29.2,29.3,29.6,29.7,29.8,29.9,29.9,30.2,30.3,30.3,30.4,30.4,30.4,30.5,30.6,31.0,31.1,31.1,31.4,31.4,31.4,31.4,31.5,31.5,31.5,31.5,31.6,31.6,31.8,31.9,32.0,32.0,32.0,32.1,32.3,32.3,32.3,32.3,32.5,32.5,32.6,32.8,32.9,33.0,33.0,33.1,33.2,33.2,33.2,33.3,33.3,33.3,33.4,33.4,33.5,33.5,33.7,33.7,33.7,33.8,33.8,33.8,33.8,33.8,33.8,34.0,34.0,34.1,34.2,34.4,34.4,34.6,34.6,34.7,34.7,34.8,34.8,34.9,34.9,35.0,35.0,35.0,35.1,35.1,35.2,35.2,35.2,35.4,35.4,35.5,35.5,35.5,35.5,35.6,35.7,35.8,35.9,35.9,36.0,36.0,36.0,36.0,36.0,36.1,36.1,36.3,36.3,36.3,36.3,36.4,36.4,36.5,36.5,36.5,36.5,36.7,36.7,36.7,36.8,36.8,37.1,37.1,37.1,37.1,37.1,37.1,37.2,37.4,37.4,37.5,37.5,37.5,37.5,37.6,37.8,37.8,37.8,37.9,38.0,38.0,38.0,38.0,38.2,38.2,38.4,38.4,38.6,38.6,38.6,38.6,38.6,38.6,38.7,38.7,38.9,39.0,39.0,39.3,39.3,39.3,39.3,39.4,39.4,39.5,39.7,39.8,40.1,40.3,40.5,40.5,40.7,40.8,40.8,40.8,40.8,41.0,41.0,41.0,41.0,41.1,41.2,41.2,41.5,41.7,42.0,42.1,42.3,42.4,42.7,42.8,42.8,43.0,43.0,43.4,43.4,43.8,44.0,44.9,45.6,45.6,45.9,46.1,46.2,47.0,47.0,48.5,49.0,52.1,52.9,58.7],"CMJ Peak Power / BM [W/kg]":[26.8,27.6,27.9,28.2,30.0,31.2,32.3,32.7,33.0,33.4,33.6,34.0,34.6,34.8,35.6,35.9,36.2,36.3,36.8,37.1,37.1,37.4,37.7,37.7,37.8,38.1,38.3,38.5,39.0,39.1,39.2,39.8,39.9,40.1,40.1,40.5,40.7,40.8,41.1,41.1,41.3,41.4,41.5,41.7,41.9,42.0,42.0,42.0,42.2,42.2,42.3,42.3,42.6,42.8,42.9,43.0,43.1,43.1,43.2,43.2,43.3,43.3,43.4,43.4,43.4,43.5,43.6,43.6,43.6,43.7,43.8,43.9,43.9,44.2,44.2,44.5,44.6,44.6,44.7,44.7,45.0,45.0,45.1,45.2,45.2,45.3,45.3,45.3,45.4,45.6,45.7,45.8,45.9,46.0,46.2,46.2,46.2,46.3,46.3,46.3,46.3,46.4,46.4,46.5,46.6,46.6,46.7,46.7,46.8,47.0,47.2,47.2,47.3,47.4,47.4,47.4,47.5,47.6,47.6,47.6,47.6,47.9,48.0,48.0,48.3,48.3,48.3,48.4,48.5,48.5,48.5,48.6,48.6,48.6,48.7,48.8,49.0,49.0,49.1,49.1,49.4,49.6,49.6,49.7,49.8,49.8,50.1,50.1,50.2,50.2,50.2,50.2,50.3,50.4,50.4,50.5,50.6,50.6,50.6,50.6,50.7,50.8,50.9,51.0,51.1,51.1,51.2,51.2,51.3,51.4,51.5,51.5,51.5,51.5,51.7,51.8,51.9,52.1,52.5,52.6,52.6,53.1,53.2,53.2,53.2,53.2,53.3,53.5,53.6,53.9,54.0,54.0,54.1,54.2,54.3,54.3,54.4,54.5,55.2,55.2,55.7,55.8,55.8,56.0,56.1,56.3,56.3,56.3,56.4,56.7,57.0,57.4,57.5,58.6,58.8,58.8,58.8,58.8,59.6,59.7,60.2,60.2,61.8,61.8,63.3,63.6,65.1,68.3,68.6,69.1,74.3,75.4,80.8,93.3],"CMJ Peak Power [W]":[2075,2118,2180,2284,2284,2355,2400,2405,2412,2490,2554,2592,2652,2662,2688,2733,2770,2789,2828,2839,2863,2894,2894,2923,2955,2969,2975,3011,3022,3037,3055,3068,3077,3083,3095,3106,3148,3152,3160,3184,3202,3245,3246,3248,3267,3285,3317,3331,3344,3361,3364,3370,3377,3381,3392,3398,3407,3407,3411,3414,3426,3460,3476,3489,3490,3502,3503,3506,3512,3529,3535,3552,3557,3565,3578,3585,3585,3594,3595,3606,3612,3615,3635,3635,3653,3673,3693,3704,3708,3708,3728,3735,3737,3751,3766,3771,3789,3789,3796,3796,3796,3814,3814,3837,3840,3840,3851,3852,3853,3866,3877,3887,3901,3906,3908,3908,3914,3920,3920,3927,3937,3954,3982,3992,3997,4004,4004,4006,4007,4007,4007,4017,4032,4033,4035,4036,4048,4049,4055,4056,4058,4071,4075,4089,4093,4119,4119,4126,4127,4141,4141,4152,4154,4178,4186,4199,4208,4215,4220,4239,4245,4246,4247,4252,4256,4265,4268,4269,4272,4285,4299,4302,4303,4329,4335,4351,4370,4385,4395,4404,4409,4427,4436,4445,4451,4452,4457,4475,4483,4492,4494,4514,4517,4521,4525,4529,4550,4550,4561,4566,4574,4589,4614,4621,4627,4630,4631,4647,4657,4658,4670,4671,4695,4704,4714,4741,4753,4825,4832,4864,4890,4890,4973,4998,5021,5150,5189,5286,5352,5375,5611,5674,5804,5857],"CMJ RSI-modified [m/s]":[0.24,0.25,0.27,0.28,0.28,0.29,0.29,0.3,0.31,0.31,0.31,0.31,0.31,0.32,0.32,0.32,0.33,0.33,0.33,0.33,0.34,0.34,0.34,0.34,0.34,0.34,0.34,0.34,0.34,0.35,0.35,0.35,0.35,0.35,0.35,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.36,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.37,0.38,0.38,0.38,0.38,0.38,0.38,0.38,0.38,0.39,0.39,0.39,0.39,0.39,0.39,0.39,0.39,0.39,0.39,0.39,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.41,0.41,0.41,0.41,0.41,0.41,0.42,0.42,0.42,0.42,0.42,0.42,0.42,0.43,0.43,0.43,0.43,0.43,0.43,0.44,0.44,0.44,0.44,0.44,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.46,0.47,0.47,0.47,0.47,0.47,0.47,0.47,0.47,0.48,0.48,0.48,0.48,0.48,0.48,0.48,0.49,0.49,0.49,0.49,0.49,0.49,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.51,0.51,0.51,0.51,0.51,0.51,0.51,0.51,0.51,0.51,0.52,0.52,0.52,0.52,0.52,0.52,0.53,0.53,0.53,0.53,0.53,0.53,0.54,0.54,0.54,0.54,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.55,0.56,0.57,0.57,0.57,0.57,0.57,0.58,0.58,0.59,0.6,0.61,0.62,0.62,0.63,0.63,0.63,0.63,0.64,0.64,0.64,0.65,0.66,0.67,0.68,0.69,0.71,0.76,0.77,0.83,0.84,0.89,1.1],"EUR":[0.92,0.94,0.95,0.95,0.97,0.97,0.98,0.98,0.98,0.98,0.99,0.99,0.99,0.99,1.0,1.0,1.0,1.0,1.0,1.01,1.01,1.02,1.02,1.02,1.02,1.02,1.02,1.02,1.03,1.03,1.03,1.03,1.03,1.03,1.03,1.04,1.04,1.04,1.04,1.04,1.04,1.04,1.04,1.04,1.04,1.05,1.05,1.05,1.05,1.05,1.05,1.05,1.05,1.05,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.06,1.07,1.07,1.07,1.07,1.07,1.07,1.07,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.08,1.09,1.09,1.09,1.09,1.09,1.09,1.09,1.09,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.11,1.11,1.11,1.11,1.11,1.11,1.11,1.11,1.11,1.11,1.11,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.12,1.13,1.13,1.13,1.13,1.13,1.13,1.13,1.13,1.13,1.14,1.14,1.14,1.14,1.14,1.14,1.14,1.14,1.14,1.14,1.14,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.15,1.16,1.16,1.16,1.16,1.16,1.16,1.17,1.17,1.17,1.17,1.17,1.17,1.17,1.17,1.17,1.18,1.18,1.18,1.18,1.18,1.18,1.19,1.19,1.19,1.19,1.19,1.19,1.19,1.2,1.2,1.2,1.2,1.2,1.2,1.2,1.2,1.2,1.21,1.21,1.21,1.22,1.22,1.23,1.23,1.23,1.23,1.24,1.24,1.24,1.24,1.24,1.25,1.25,1.26,1.27,1.28,1.28,1.28,1.29,1.3,1.3,1.31,1.33,1.37,1.41,1.44,1.64],"Grip Strength":[32.0,33.2,34.8,35.1,35.7,36.7,36.8,37.8,38.3,38.3,38.5,38.9,39.6,39.8,39.9,40.5,40.5,41.5,41.5,41.6,41.7,41.8,41.8,41.9,42.2,42.3,42.8,43.1,43.2,43.4,43.4,43.5,43.6,43.9,43.9,44.0,44.2,44.3,44.3,44.4,44.4,44.4,44.4,44.5,44.5,44.7,44.7,44.8,44.8,44.9,45.0,45.0,45.0,45.2,45.2,45.3,45.3,45.6,45.6,45.6,45.6,45.9,46.0,46.2,46.3,46.3,46.5,46.7,46.7,46.8,46.9,47.1,47.1,47.2,47.2,47.3,47.4,47.6,47.7,47.9,48.1,48.1,48.3,48.3,48.4,48.5,48.5,48.7,48.7,48.7,48.7,48.8,48.8,48.9,48.9,48.9,48.9,49.0,49.0,49.1,49.1,49.3,49.3,49.3,49.4,49.4,49.5,49.6,49.8,49.9,50.0,50.0,50.1,50.2,50.5,50.5,50.7,50.8,50.9,51.2,51.3,51.3,51.4,51.5,51.6,51.8,51.9,52.0,52.0,52.1,52.1,52.1,52.3,52.3,52.4,52.5,52.8,52.8,53.2,53.4,53.4,53.5,53.5,53.5,53.5,53.6,53.7,53.8,53.9,53.9,54.3,54.3,54.4,54.6,54.6,54.6,54.7,54.8,55.0,55.1,55.2,55.3,55.3,55.5,55.6,55.6,55.6,55.7,55.8,55.9,55.9,56.0,56.0,56.1,56.1,56.1,56.1,56.2,56.4,56.9,56.9,57.0,57.1,57.1,57.1,57.2,57.4,57.4,57.5,57.5,57.6,57.7,57.9,57.9,58.1,58.1,58.3,58.5,58.6,58.7,59.0,59.3,59.3,59.9,59.9,60.3,60.5,60.6,60.6,60.7,60.7,61.6,61.6,62.0,62.0,62.1,62.2,62.5,62.7,63.1,63.4,64.3,65.0,65.3,65.5,65.7,65.7,65.7,65.8,66.4,66.7,67.7,72.8,74.7],"Height[M]":[1.68,1.68,1.7,1.7,1.72,1.72,1.73,1.73,1.73,1.73,1.74,1.75,1.75,1.75,1.75,1.75,1.75,1.75,1.75,1.75,1.75,1.76,1.76,1.76,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.77,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.78,1.79,1.79,1.79,1.79,1.79,1.79,1.79,1.79,1.79,1.79,1.79,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.8,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.81,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.82,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.83,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.84,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.85,1.86,1.86,1.86,1.86,1.86,1.86,1.86,1.87,1.87,1.87,1.87,1.87,1.87,1.87,1.87,1.87,1.87,1.87,1.88,1.88,1.88,1.88,1.88,1.88,1.9,1.9,1.9,1.9,1.9,1.9,1.9,1.9,1.9,1.92],"IMTP Peak Vertical Force / BM [N/kg]":[18.63,20.2,20.35,20.66,20.76,21.15,21.18,21.7,21.87,22.05,22.23,22.26,22.36,22.55,23.06,23.27,23.28,23.29,23.39,23.49,23.51,23.54,23.57,23.64,23.66,23.72,23.75,23.75,23.76,23.78,23.89,23.89,23.98,24.02,24.04,24.06,24.15,24.29,24.33,24.35,24.46,24.5,24.6,24.68,24.69,24.71,24.71,24.82,24.87,24.89,24.89,24.9,24.9,25.03,25.03,25.05,25.25,25.25,25.31,25.32,25.34,25.34,25.35,25.46,25.48,25.53,25.54,25.59,25.59,25.6,25.62,25.64,25.64,25.71,25.72,25.76,25.79,25.81,25.85,25.85,25.87,25.87,25.92,25.97,25.97,25.97,25.97,26.02,26.02,26.05,26.07,26.08,26.09,26.11,26.12,26.17,26.18,26.19,26.21,26.21,26.24,26.25,26.26,26.3,26.31,26.33,26.4,26.41,26.42,26.47,26.49,26.5,26.51,26.59,26.64,26.71,26.72,26.81,26.82,26.97,26.99,27.02,27.15,27.16,27.16,27.18,27.22,27.23,27.32,27.36,27.38,27.4,27.41,27.41,27.5,27.54,27.55,27.55,27.61,27.63,27.63,27.64,27.68,27.73,27.73,27.78,27.78,27.78,27.79,27.85,27.87,27.89,27.89,27.89,27.94,27.98,28.03,28.05,28.13,28.22,28.27,28.27,28.35,28.36,28.39,28.43,28.46,28.56,28.62,28.7,28.73,28.73,28.74,28.79,28.83,28.84,28.99,29.1,29.23,29.25,29.34,29.4,29.42,29.51,29.53,29.62,29.76,29.77,29.85,29.87,29.89,29.91,30.0,30.07,30.08,30.11,30.14,30.15,30.28,30.29,30.41,30.53,30.61,30.69,30.75,30.81,30.81,31.08,31.1,31.12,31.48,31.69,31.74,31.75,31.92,32.02,32.06,32.09,32.14,32.15,32.34,32.41,32.54,32.6,32.64,32.75,32.89,33.85,33.88,33.95,35.44,35.66,37.71,37.8],"IMTP Peak Vertical Force [N]":[1238,1494,1508,1518,1519,1564,1604,1627,1631,1652,1660,1676,1696,1701,1740,1740,1757,1765,1767,1778,1788,1791,1800,1813,1828,1831,1833,1838,1844,1860,1866,1873,1883,1884,1895,1898,1908,1914,1914,1920,1928,1930,1934,1939,1942,1948,1963,1966,1968,1972,1973,1975,1981,1981,1987,1988,1992,2000,2004,2004,2009,2009,2018,2019,2026,2028,2036,2037,2037,2042,2042,2050,2050,2052,2060,2061,2062,2066,2070,2075,2087,2094,2095,2097,2099,2100,2104,2105,2117,2118,2119,2124,2124,2124,2129,2132,2132,2133,2136,2136,2138,2151,2153,2166,2168,2170,2174,2175,2180,2182,2188,2189,2194,2197,2200,2202,2205,2212,2212,2212,2213,2217,2221,2222,2227,2229,2232,2233,2236,2236,2238,2242,2244,2249,2250,2254,2255,2257,2267,2268,2275,2277,2282,2282,2283,2283,2283,2322,2332,2334,2343,2346,2347,2348,2348,2355,2356,2357,2362,2364,2366,2366,2371,2374,2379,2380,2385,2386,2390,2394,2395,2396,2402,2405,2413,2413,2415,2416,2417,2419,2419,2420,2423,2436,2439,2439,2446,2448,2451,2452,2455,2455,2464,2464,2465,2482,2503,2504,2506,2509,2509,2517,2523,2525,2533,2535,2535,2553,2553,2558,2566,2566,2567,2571,2577,2587,2600,2607,2613,2624,2634,2642,2653,2659,2666,2691,2704,2724,2802,2833,2855,2889,2900,3135],"SJ Jump Height (Flight Time) [cm]":[18.7,21.2,21.5,22.7,22.8,23.3,23.4,23.6,23.7,24.3,24.5,24.6,24.6,24.7,25.1,25.1,25.3,25.3,25.5,25.7,25.9,26.1,26.1,26.4,26.4,26.5,26.5,26.5,26.6,26.6,26.6,26.8,26.9,27.0,27.1,27.1,27.2,27.2,27.3,27.4,27.7,27.9,27.9,28.0,28.0,28.0,28.1,28.1,28.1,28.2,28.3,28.4,28.4,28.4,28.4,28.4,28.4,28.4,28.4,28.5,28.5,28.5,28.6,28.7,28.8,29.0,29.0,29.1,29.1,29.1,29.2,29.2,29.2,29.2,29.3,29.4,29.5,29.6,29.7,29.9,30.0,30.0,30.1,30.2,30.2,30.2,30.2,30.2,30.3,30.4,30.4,30.4,30.4,30.5,30.5,30.5,30.7,30.8,30.8,31.1,31.2,31.2,31.3,31.3,31.4,31.5,31.5,31.5,31.5,31.6,31.6,31.6,31.6,31.6,31.9,31.9,31.9,32.0,32.0,32.0,32.0,32.0,32.1,32.1,32.3,32.4,32.5,32.5,32.5,32.5,32.8,32.9,32.9,32.9,32.9,33.0,33.0,33.0,33.3,33.3,33.3,33.3,33.3,33.5,33.5,33.5,33.5,33.5,33.7,33.7,33.8,33.8,33.9,34.1,34.1,34.2,34.2,34.2,34.2,34.3,34.4,34.4,34.4,34.7,34.8,34.8,34.8,34.8,34.9,35.1,35.1,35.1,35.1,35.2,35.2,35.2,35.4,35.5,35.6,35.7,35.8,35.8,35.9,35.9,36.0,36.1,36.1,36.1,36.2,36.3,36.4,36.4,36.5,36.7,36.7,36.8,36.8,36.9,37.0,37.1,37.1,37.2,37.2,37.4,37.4,37.5,37.5,37.8,38.0,38.3,38.4,38.6,38.7,38.9,39.0,39.0,39.3,40.0,40.3,40.5,40.5,40.7,40.8,41.4,41.5,41.7,42.8,43.3,43.7,45.3,47.3,49.0,50.9],"SJ Peak Power / BM [W/kg]":[16.6,17.3,18.0,19.0,21.9,22.0,22.5,23.0,23.3,23.3,23.8,24.0,25.3,26.1,27.1,27.2,27.4,27.4,28.0,28.8,29.0,29.5,29.6,29.7,30.0,30.6,31.0,31.3,31.4,31.8,32.3,32.5,32.6,32.7,32.9,33.0,33.1,33.1,33.2,33.2,33.6,33.6,33.7,33.9,33.9,35.3,35.5,35.5,35.6,35.7,36.3,36.5,36.5,36.8,37.0,37.4,37.6,37.7,37.9,38.0,38.3,38.5,38.5,38.7,38.8,38.8,39.2,39.2,39.3,39.6,39.9,40.5,40.5,40.6,40.6,40.6,40.7,40.9,41.0,41.2,41.4,41.5,41.5,42.1,42.2,42.2,42.8,42.9,42.9,43.2,43.2,43.2,43.4,43.6,43.7,43.7,43.8,43.8,43.9,43.9,44.1,44.2,44.4,44.5,44.7,44.7,45.0,45.0,45.1,45.4,45.6,45.8,45.8,46.0,46.2,46.2,46.3,46.4,46.4,46.4,46.5,46.5,46.6,46.6,46.6,46.6,46.6,46.7,47.0,47.0,47.0,47.0,47.1,47.3,47.4,47.5,47.5,47.9,47.9,48.0,48.0,48.0,48.4,48.4,48.4,48.4,48.5,48.5,48.6,48.7,48.7,48.7,48.7,48.9,48.9,48.9,48.9,49.0,49.1,49.2,49.3,49.3,49.5,49.5,49.5,49.5,49.5,49.5,49.6,49.8,49.8,49.8,49.8,49.9,50.0,50.3,50.3,50.3,50.4,50.7,50.8,50.8,50.9,51.1,51.2,51.2,51.2,51.3,51.4,51.5,51.5,51.8,52.0,52.2,52.6,52.6,53.3,53.3,53.3,53.6,53.9,54.1,54.3,55.0,55.0,55.2,55.9,55.9,56.1,56.3,56.3,56.4,56.4,57.4,57.5,57.5,57.8,58.0,58.1,58.1,58.3,58.9,59.2,59.3,60.4,60.9,61.3,63.6,63.8,67.8,68.5,71.5,72.3,74.9],"SJ Peak Power [W]":[1290,1358,1472,1590,1675,1677,1759,1816,1824,1830,1856,1856,1883,1889,1927,1949,2011,2102,2204,2240,2247,2305,2332,2365,2410,2417,2459,2480,2481,2500,2504,2555,2568,2586,2601,2616,2627,2660,2667,2677,2693,2716,2735,2791,2830,2873,2882,2903,2957,2958,2970,2970,2970,3003,3004,3006,3034,3036,3038,3050,3056,3062,3073,3102,3104,3120,3123,3126,3128,3138,3158,3166,3169,3178,3204,3205,3240,3242,3249,3295,3301,3324,3354,3360,3405,3407,3420,3427,3434,3457,3466,3476,3505,3514,3515,3522,3527,3529,3530,3533,3551,3565,3586,3597,3601,3603,3635,3642,3646,3650,3655,3660,3664,3664,3665,3683,3689,3697,3706,3729,3738,3742,3748,3762,3767,3784,3794,3796,3799,3822,3823,3833,3837,3852,3852,3853,3855,3857,3862,3871,3882,3903,3913,3916,3922,3930,3968,3976,3980,4004,4016,4020,4021,4032,4033,4043,4052,4058,4081,4089,4091,4118,4129,4129,4132,4134,4139,4140,4147,4151,4152,4152,4160,4168,4170,4178,4189,4205,4206,4208,4224,4229,4239,4245,4248,4285,4294,4297,4317,4320,4332,4337,4341,4348,4355,4360,4376,4385,4388,4395,4417,4433,4447,4448,4467,4469,4483,4502,4512,4528,4545,4553,4564,4573,4671,4677,4683,4739,4741,4780,4793,4804,4916,4948,4954,5048,5063,5115,5137,5168,5516,5519,5525,5551],"SJ RSI-modified [m/s]":[0.24,0.3,0.36,0.37,0.37,0.38,0.39,0.41,0.41,0.42,0.43,0.43,0.46,0.46,0.46,0.47,0.47,0.48,0.48,0.48,0.48,0.49,0.49,0.49,0.51,0.51,0.51,0.52,0.52,0.52,0.52,0.52,0.52,0.53,0.53,0.54,0.54,0.54,0.55,0.55,0.55,0.55,0.55,0.55,0.56,0.56,0.56,0.56,0.56,0.56,0.57,0.57,0.57,0.58,0.58,0.58,0.58,0.58,0.59,0.59,0.59,0.59,0.59,0.59,0.59,0.6,0.6,0.6,0.61,0.61,0.61,0.61,0.61,0.61,0.62,0.62,0.62,0.63,0.63,0.63,0.64,0.64,0.64,0.65,0.65,0.65,0.66,0.66,0.66,0.66,0.66,0.66,0.67,0.67,0.67,0.68,0.68,0.68,0.68,0.69,0.69,0.69,0.69,0.69,0.7,0.7,0.7,0.7,0.7,0.7,0.71,0.71,0.71,0.71,0.71,0.72,0.72,0.72,0.72,0.72,0.72,0.73,0.73,0.73,0.73,0.73,0.74,0.74,0.75,0.75,0.75,0.75,0.75,0.76,0.76,0.77,0.77,0.78,0.78,0.78,0.78,0.78,0.78,0.78,0.79,0.79,0.79,0.8,0.8,0.8,0.81,0.81,0.81,0.81,0.82,0.82,0.83,0.83,0.83,0.83,0.83,0.84,0.84,0.84,0.84,0.84,0.85,0.85,0.86,0.86,0.86,0.86,0.86,0.87,0.87,0.87,0.87,0.88,0.88,0.88,0.89,0.9,0.9,0.9,0.9,0.91,0.91,0.91,0.92,0.92,0.92,0.93,0.93,0.94,0.95,0.95,0.96,0.96,0.96,0.96,0.96,0.96,0.96,0.96,0.97,0.97,0.98,0.98,0.98,0.99,0.99,1.0,1.01,1.02,1.02,1.03,1.05,1.06,1.06,1.07,1.08,1.1,1.12,1.12,1.12,1.13,1.14,1.18,1.18,1.19,1.22,1.39,1.41],"Weight[KG]":[60,60,65,65,65,66,66,66,66,67,67,68,68,68,68,68,69,69,70,70,70,70,70,70,70,70,71,72,72,72,72,72,73,73,73,73,74,74,74,75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,75,76,76,76,77,77,77,77,77,77,77,78,78,78,78,78,78,78,78,78,78,78,79,79,79,79,79,79,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,80,81,81,81,81,81,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,82,83,83,83,83,83,83,83,83,83,83,84,84,84,84,84,84,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,86,86,86,86,87,87,87,87,87,87,87,87,88,88,88,88,88,89,89,89,90,90,90,90,90,90,90,90,90,90,90,90,91,91,91,91,92,92,92,92,93,93,93,93,94,94,95,95,95,95,95,95,95,96,96,100,100],"arm_slot_mean_deg":[-74.34553206419112,-72.19857549311845,-64.05015687206989,-63.91268232058721,-63.332700566150265,-46.94180841422772,-41.77544299431961,-21.888855116099425,-18.175102002522788,-10.293339230772832,-7.628529444581363,-5.336456947157071,-2.950609866048816,-1.8975650340513384,-0.8471480316021278,-0.5371645645159658,0.012809498822517,0.3934836235631685,0.7702238896145917,1.049903591209575,1.984555982728468,2.6985561797515016,2.755451252571905,4.207339919793389,4.555399759877238,4.598104498842233,5.005579108299959,5.052415163052627,5.7822026794810295,6.884666438032371,6.968029557585124,7.1869211514464535,7.501393776732714,7.592772975150081,8.125340929937478,8.207128439680076,8.951981523343042,9.708262717192742,10.28205461070758,10.358224739206271,10.363071698585554,10.751820919519885,10.80863811314703,10.865092921997936,11.253772057824916,12.423296380024905,12.71361671817437,12.724932779019811,12.877847244029937,13.0154659573916,13.056315449858678,13.179526788219404,13.251559711419718,13.441493211525296,13.58256999672412,13.62622764937906,13.649286419221848,13.753319675977025,13.996130468743315,14.027928198889262,14.188680394159803,14.409991419410762,14.555339188330075,14.74479235398027,14.79883159161174,15.224698197078794,15.231033100807252,15.244547159966098,15.479397248882927,15.552559259747586,15.60279192818405,15.70031448325344,15.804744222558467,15.818581683027904,15.932956895810094,16.00194874004834,16.017148478284916,16.1345403557364,16.29885847327883,16.315036604209524,16.350069177535836,16.45720077018579,16.47571102292682,16.57047613473155,16.589138020575618,16.70566521512203,16.919847116592365,16.931073457030514,17.334136478516513,17.458582689484704,17.505770475100057,17.520893186069312,17.523094466873246,17.553264277839865,17.56618628670368,17.907913789726646,17.91081254896176,17.942206294334383,18.08381666578984,18.19096120073427,18.38308242586316,18.395560285162908,18.46498811450489,18.48091719006077,19.040878810031536,19.07666051232398,19.130313170580035,19.17881558016618,19.21221750016926,19.30046698641575,19.66726310558978,19.91184001369676,20.181088919302624,20.36470989776254,20.42254439537217,20.512733611207388,20.638769259408853,20.758064514541218,20.87820122518412,20.87820122518412,21.03619483096828,21.03710906592409,21.17266027209605,21.24366689349887,21.3860104482314,21.450022798117832,21.58300097859804,21.63157416689751,21.892640896468407,22.00711950578613,22.07524275137572,22.3919050742754,22.41953508116273,22.61211151246143,22.632395231537792,23.38734398599729,23.587602774201656,23.991673704275406,24.13277042867266,24.29097441984129,24.37126535466373,24.38160589220626,24.432650830305608,24.582852247899098,24.58598073205342,24.803055633230308,24.98214792284008,24.996216516275418,25.044998664311525,25.12550347053095,25.18958422512941,25.503208186317533,25.51537483225516,25.548538227712083,25.63138031460617,25.701168082230208,26.184161173165176,26.22434522478148,26.38704450676994,26.576432755786307,26.86353100036189,27.00769131824186,27.06930760624844,27.201039423483884,27.71851073268842,27.75746363487163,27.8950439613008,28.154383336864804,28.444124103445528,28.77855336856507,29.043353151966578,29.236518869876853,29.24520317326868,29.30721791601432,29.39257219004613,29.4395606248666,30.06523387412522,30.13507000318446,30.230592294454823,30.261568686698816,30.291785636310003,30.3062492405814,30.32514901205487,30.369886583378968,30.645769193004043,30.685328853388263,30.78136357190714,30.86582979910328,30.94133606421599,30.993491497592327,31.072794657679843,31.323999222998715,31.821512298658952,31.87234899461628,31.986308210062685,32.01495582735339,32.438869045582315,32.673151360175055,32.83879906083862,33.107701227611,33.14922027033856,33.32518271069555,33.35287155419659,33.66550923702457,33.844092705673965,33.86057348533389,33.95648187002687,34.099002481249045,34.519759782238175,34.569948612333874,34.74832741432266,36.32844640356319,36.61436397069881,36.949690395563024,37.181285801229016,37.56450866704977,38.246165620059806,38.88275855614859,38.92285959476763,39.09779505526323,39.77018531924778,40.12713301644242,40.21409599464121,41.55994747292509,41.712268451729074,42.268026809994616,43.030693957920526,43.7501714169849,44.36050612908334,44.38835060847462,46.46064338019725,46.852274652301645,48.28760702229502,49.092756963280166],"arm_slot_sd_deg":[0.6042500982114039,0.6103538928178461,0.6103538928178461,0.6279153949774813,0.6553745358168603,0.7930780687357901,0.9050799125699396,0.94237295722746,1.000651978307868,1.059106687507513,1.1051697936208382,1.1073932674230629,1.1184571021566436,1.1608606675490225,1.167337280822556,1.1713683530807766,1.2077118851154265,1.2229184871743677,1.2259109390424938,1.2278791978069958,1.2301287518875283,1.2310785526208206,1.2359219149628249,1.2532674926339835,1.259458539073238,1.2966934626955304,1.3004000752805371,1.3198760387145991,1.3228139830183747,1.32732327129192,1.3284451055719233,1.3439131373215365,1.3443238681946352,1.3489794315608947,1.359583414325377,1.3599701154864587,1.3622581487483527,1.37486699666122,1.3792972473155545,1.38618736231053,1.3911699963511146,1.3938763461911643,1.3997080111708449,1.4010179319038245,1.404196551586323,1.4078596880254632,1.421347855475823,1.4230455321083713,1.4351027413919806,1.4487983010705543,1.4604373901144792,1.478349228355619,1.4870196028718514,1.4977974104800889,1.5059107015779118,1.5224307667623511,1.527297612204107,1.537029381777041,1.5429496528729083,1.551133710816927,1.55227617776575,1.5533546273295105,1.5637925584231729,1.5654151671380716,1.5991654989625783,1.6134585231626626,1.6251726450613522,1.6518440023089696,1.6524348974226697,1.6569172552255318,1.6591975250462438,1.66435906857159,1.695679134737275,1.6988216757786077,1.709163972665296,1.7110104280690326,1.7121035070028645,1.7299620071963546,1.7304011203366296,1.7435998925962843,1.7510519624014853,1.7512765914558832,1.767557537199009,1.7737594299090758,1.788165202031969,1.7900649751402349,1.80166486318903,1.8032112478359583,1.827952488437592,1.833517073363672,1.835487724581202,1.8427575083248768,1.8427864117009805,1.843495440308622,1.8502141525576792,1.8609392271456144,1.8630930166754427,1.8640492883783584,1.921759826151363,1.9575626553085483,1.9609016584621977,1.9619800438769148,1.9847455293051943,1.991487401223548,1.9921220998800973,2.005708115117478,2.0312705308179746,2.0315619046138016,2.0397991410706724,2.058055580949772,2.063176405475214,2.0692881632712936,2.0745070489247026,2.07808381094084,2.0940046603194338,2.100106376042283,2.1202559944004897,2.123532745098599,2.124241928016753,2.1344721993203835,2.1366212966837,2.136772416932861,2.141341504026985,2.1453400676672127,2.173472509604412,2.198584509966148,2.2258521345944016,2.228074692527508,2.235674900858629,2.239332055934025,2.240076689196226,2.2798995144739744,2.293215775459457,2.299528871088109,2.30151241930638,2.324675539305969,2.336609259624738,2.3394636094342385,2.385493054796626,2.397771883823425,2.4621673248350056,2.4626428073681064,2.466625202627444,2.488669026860598,2.493249576313235,2.496603576909356,2.497342829916368,2.5058471933307227,2.509207407030264,2.5246569464681343,2.5326173867145143,2.538956497803273,2.551459397636312,2.5923874374560283,2.612904920718664,2.671450976004972,2.684915027721517,2.7100145865541965,2.7138190116969247,2.789777321504903,2.7953742142715154,2.8549255002598937,2.8836858768726303,2.916133052691813,2.9261425565341903,2.938592396080258,2.9518201085612503,2.984155860771333,2.993557605326627,3.0546134339984867,3.139327468353424,3.31419264822612,3.378324003460575,3.471016490028182,3.4741316036552123,3.612408809211145,3.8544991954206815,3.8812667881288063,4.031101305500713,4.044822920938551,4.122918058593644,4.126192227334957,4.231753383795969,4.246752720795959,4.33014120701058,4.452514837741645,4.480869294087091,4.655553014502198,4.797716644172254,4.95916172611954,5.0565572855894025,5.164717862826715,5.195149293628264,5.303826669603586,5.514644040991864,5.564850717057001,5.796725111409159,6.365161567826902,6.418376531392852,6.480901431084972,6.69040255250075,6.842509107484975,7.017659330648737,7.038769874227989,7.180574768360067,7.25192877398507,7.786604170882802,8.069189409459232,8.135922992299413,8.216321432245953,8.458772262630493,8.93465590184823,9.822502774894142,11.094048389487462,12.602344751479334,14.211380050463683,14.777853040422292,15.25987340623006,19.97589289512734,20.2428741905752,22.34781300596307,24.51287713057481,28.326129776539645,30.555298684394504,31.448663197506104,31.77832825163004,32.02382525717043,34.010277835224414,36.80478275991978,40.26257729836609,40.65293041063696,42.57453700630816,44.12461638517395,48.72554960861377],"hip_shoulder_sep_at_fc":[1.5861071637270463,1.7681903626793911,1.8157175947365456,2.370485502818104,2.6456328411703325,2.660436505507832,2.677512608372556,3.0391920743641627,3.121311502227502,3.140624164922201,3.521576868653113,3.616778452857414,3.6919873768548968,3.69420557880877,3.7606239133524593,3.806937949626356,3.819073243297925,3.9202912242848527,3.958319521108972,4.002806878097228,4.084812973474323,4.155067357022368,4.398440928544073,4.527681721979544,4.6557662379308375,4.74618063397671,4.777631947552548,5.104378604531842,5.185744756503997,6.260580415725521,6.348315475114099,6.431840245,6.652064323494624,6.696461402870639,7.389157880346811,7.483700538680498,7.582069833873707,7.765752916177652,7.765752916177652,7.904831077518088,8.183783796581196,8.285009411329792,8.349873396651574,8.521993404950045,8.71513887716176,8.76792247581735,9.054315659999997,9.148169294300452,9.164184533653518,9.741986152833618,10.08094431281828,10.09866554072572,10.727212149750294,10.746396179375663,11.065308490902945,11.355955060500342,11.363974819647506,11.696685341379723,11.811458251116434,11.992623671639077,12.0504457543787,12.451435458170732,12.515104924779472,12.60203992863375,13.265808566305664,13.597176894466909,13.76199767572836,13.917338321658129,13.976452750223048,14.007503323289177,14.036704410602468,14.20043970505442,14.289032715480277,14.87155368578506,14.939076048300642,14.996234613568047,15.03568307744804,15.10979759757024,15.113962463981204,15.354790938816825,15.362408893873988,15.662759553054322,15.843101983207475,15.937990966606437,16.250875515448463,16.83216005178734,16.889020816725626,17.003500121696334,17.290132072290618,17.52075114783974,17.613060814827392,17.630192948387027,17.674667557399413,17.796775667775133,17.986434872149204,18.44472266001283,18.615267081207406,18.637455252217016,19.036775219181088,19.05855851099168,19.30088690270301,19.542457759437752,19.58261745553425,19.825762183588232,20.0703819371818,20.095390450192912,20.114854318366618,20.15517312237045,20.743899014158323,20.86548085950409,21.21392770527146,21.246836747760447,21.48298800610337,21.507088508460527,21.5560201760417,21.928854111442007,21.96847409497977,22.143808627186623,22.159373854760943,22.35993993446533,23.70046243881832,23.93536891909754,24.071200410000003,24.106980047274888,24.14412044357859,24.3186182964274,24.397965831357183,24.406395706728908,24.469565033220228,25.03419411596773,25.423690109273096,25.87021776744497,26.314281523212443,26.343855976182105,26.39949915795863,26.59164063401456,26.602471566574323,26.73703116982038,26.74481590645574,26.886701331125067,26.96293572706162,27.54822976904068,27.74562923303895,27.88658540187705,27.94853286985217,28.06397110816554,28.097222827069466,28.1065511144088,28.274558451048257,28.514031739753108,28.709286412528968,28.709850416628992,28.882507889979195,29.00198135192449,29.15836478736477,29.2182742557412,29.443842967576444,29.54776178879856,29.583414913681203,29.825487278746472,29.98140053793597,30.037758473170783,30.045907403594825,30.47543607011678,30.765557623367563,31.010531173402825,31.07823509064664,31.406594879834884,31.57115180060876,32.092030140062604,32.09851059,32.75588779204732,33.01535142003344,33.576596301930095,33.923931415,34.004994566984735,34.11494631409298,34.599355682748154,34.60889727167647,34.75115263261379,35.11225240899472,35.13713772072563,35.21716894086065,35.28530251621977,35.665769950884666,35.89205710511441,35.97917121820352,36.14813360033688,36.75787015278144,37.42143844648075,38.34414559238344,38.51641658838135,38.76856665365359,40.979876875,41.31292636288229,41.577597512252446,41.90809132802303,43.81173419882288,47.48646594554155],"lead_knee_ext_vel_max":[106.3322301723786,137.46793483244704,148.5163737258506,154.9742919709457,159.91038738143897,173.6988113342182,174.16319572160023,175.5979217339034,177.48824166886064,182.6194170210252,187.6081632204916,207.95197684247032,210.6221275580984,213.63318975332768,213.95890755173585,219.867002376228,220.72276183630697,221.44782671899205,227.4349076693054,227.4349076693054,228.3281136980642,230.37346925665943,231.78675422275663,234.9408985720511,237.93875838660108,238.97812854533808,239.0518489996958,239.263895300614,239.8921005377478,243.4809692068192,244.5979417868521,244.8262725668759,247.611487450268,251.73681254650324,252.3907078887073,256.45481141269084,268.86091270211193,268.89842086402143,270.06403938561846,270.17091204954016,270.4158415204947,270.7953327907495,271.89311909979045,271.9536911358516,273.0413355415008,274.2743893070406,274.2846806349211,278.1440246590696,280.2612093351676,280.9015238909508,281.3411679315344,281.4442769617981,283.639662176776,287.53181289678827,291.5972033,292.0518317620956,292.0878164380625,293.54522561462727,294.1154183851436,294.18280215927257,297.2056269825157,300.22200349346303,302.4092978,305.38497470078005,308.8752291518923,312.4264946835456,313.7466655788584,314.1992602110357,316.00165264727525,321.22387830600894,321.2352321117987,321.2771009850622,326.0229105484551,326.2451549741263,327.41840411548486,328.54398812840805,331.4291079868235,333.1631255050437,333.7703303473,335.8650895645605,338.2107767509186,338.7132875103399,339.93478944906025,342.82293058424546,343.80072575201245,344.2487110742953,346.80814297550785,347.0292471518055,347.2202116086685,348.01076623385273,349.4720278566909,349.84717073841506,350.46100621777373,350.836652,352.1299501779525,353.27165707951553,353.34848824025613,353.9498696496598,354.54948869373584,354.8691963721432,355.7869772408756,359.7971735002544,359.88226284781365,360.25251788285027,360.3268552997922,360.65908835032087,361.2691688178247,362.37316557409673,362.6713848572915,362.7230414540424,367.79561781734094,371.4728183001798,371.4881635277916,371.7953801361482,373.7564931463147,373.77661476939454,375.3583337135885,376.7177830609749,378.0386100309983,379.5003403257709,379.54041750215816,379.7005661887183,381.112600956026,381.281646491595,381.4920520749263,381.77202896096577,383.63049450394,386.0306570226151,386.4123645479815,387.2979602678906,388.0985058377642,388.59156557245706,390.9443550324696,391.0199128301677,391.53329865223225,393.2666509830984,395.46744114329255,397.9266978407255,399.3692577088852,401.6225063400223,404.0578986674624,404.590824149076,406.4310232421556,406.8127861217962,407.29080450732056,407.3570137408428,408.3868631222343,408.5686267582955,408.6956589,408.9650377144288,411.6471388437026,412.99649311210857,413.26619580160906,415.8823809797582,417.6856710807684,420.1501002877119,421.1482008839085,421.4621227348032,421.640288988928,423.3211449180301,423.6162060213066,425.5009847009218,430.07475254713216,431.03908885,431.590624127344,435.8296938580427,436.1638564428672,437.9253080982081,441.02323404016295,447.8399752,448.0049229331238,450.089439541686,457.3158210004027,461.9945428825831,464.3294038926807,464.6323532400408,467.45748378524456,468.7025471885772,470.3556349137321,473.524241161602,476.0543638734101,476.1594126419847,478.5535463289009,478.5564548998723,481.3321959089494,484.6879154966129,494.9981724813357,498.10784296159727,498.8796914376861,502.6656275608867,503.0742071006988,508.6845415265005,522.1856899543585,537.5281750456529,543.3886642773589,566.2502936003812],"max_pelvis_rot_vel_dps":[59.86076092134038,82.94995578514464,109.87956175652316,111.49572108598625,119.98076871440723,128.8485258237182,133.22986516764558,141.78013924307075,144.49346588217506,169.52266245798944,174.66138284113288,176.95509253378856,178.26362307905205,179.2083397441107,199.6817675186092,208.99449476484352,211.99355732400988,231.029689075178,233.3913799437131,243.33590998522573,254.7201437865785,260.800618001349,264.237792668964,265.7945548180947,287.01670340482053,288.89160272516284,310.305189320334,318.073805217267,348.01401976005013,362.34439915245446,367.3194732611892,372.6794167203915,376.11733055,386.1541004144743,386.2110121030342,392.60241789654185,393.3255002839237,394.2419081079332,394.6674560233356,395.98255642924937,396.0197297363959,398.56793240785953,398.9758741361137,399.1123468859554,399.1168463811768,399.4978837180716,399.6164088836068,400.3036369450421,401.30230675645504,402.8204188053539,407.150146285099,407.9428145175903,411.487967273818,414.8874930438737,415.5750614284033,417.9343215381722,418.49931716372623,422.35326165546905,422.5993751235627,424.28480721624464,425.7567835816941,428.1920540787941,429.3129809900099,430.0401232388465,430.7060731478088,430.9971264175647,432.25606166655245,432.426929157642,435.12710839287047,437.7445226912917,439.2896073738135,439.5171795721766,440.9330398918655,443.2004848601837,443.8348833129412,445.2618628300868,445.949228967049,448.0731659595148,450.5586789393314,451.1047344080752,451.3368626714074,451.4447941553908,451.5926253666307,455.8810859943698,456.8783304872117,457.6846652804629,457.8267052551041,458.4602774809738,458.65704931360153,461.0725614599282,461.5711103967419,463.7642658880337,463.79752705932174,464.2757219454098,468.07538679117806,469.1145868962863,473.5733832676602,473.7376705129328,473.7376705129328,473.80278361232047,474.8740084977851,474.9477215957836,478.9236217461095,479.03287947083794,479.3195164182721,479.346557259082,480.3156238200892,480.3409470493856,480.7892837285075,481.72793993353866,483.0511142691301,484.5034750467413,485.1336595363364,485.26683738746647,485.3699758183117,486.1326876585712,486.5640772,487.58565653442224,487.7203604923821,488.03274037438064,488.6094087921648,489.4549151403881,489.4936668160633,492.2758948237641,492.34530928205714,492.4922675310167,492.8368632659193,492.9647960220188,494.00119491823045,494.1003310377422,494.10983932242505,495.1449299141944,497.77680798283,498.16664080840064,498.9549030596472,501.30703118247527,501.878610474139,502.85826715694327,503.49143665138206,503.8388218089227,504.4187285834097,505.035173752512,505.3715899624647,505.5411733812044,505.8047175418838,506.17555385102565,506.2217121946908,509.9754470542228,510.3474264854383,510.56164066017686,510.5880942635519,511.1685191798764,512.1819364896942,514.5817250525309,516.7102827491202,516.8729916710554,517.5642768965663,518.6584773999002,519.5381137582807,522.3837966869175,524.7298132,529.0757519787471,530.56225045,533.3035649725435,534.2202619697664,534.2587212826434,534.9654504218418,535.3423277868942,536.9847716192138,538.2839570926869,538.3937712206742,538.7960556826398,538.8717280524401,539.7330300665315,539.8746690088308,541.8238612636973,544.730999587354,545.8706297,548.1488437401542,550.9514121632778,555.5069659480722,558.1946973004347,562.7196477334411,565.3489176503518,567.0289126311059,568.9800118647004,572.0609308176213,575.9765509166316,576.9431757,581.7733860505023,585.400771469635,589.4781265404993,595.7835873957177,597.1861705651817,603.1081597281993,608.827432962948,660.4025876082126,725.547333385322,739.3261120467694],"max_shoulder_ER_deg":[119.70135129418412,155.82105334860682,156.42336346429346,158.81582277494056,159.31437508963995,159.37025107391676,160.8962304212875,161.63449232388507,163.36474417633474,163.75322325166235,164.12191561479324,164.80519714970603,165.50018058724433,165.55469360076054,166.1435838191502,166.2638784779187,167.1419449229055,167.37052333349772,167.64811182425711,167.74922537268918,168.03159791543692,170.19063078427322,170.91802401717774,172.0670804703207,172.26366344984277,172.9346321945124,173.09053636235694,173.67307283256008,173.8242780661646,174.07950863123736,174.13093628004208,174.87358505883688,175.10796364878252,175.12222679596607,175.16594906980794,175.33860362466245,175.3972744922359,175.57926215,175.58217004120343,175.7777465888822,178.19291914082285,178.4703708,178.803808100778,178.888670574618,178.9907802080414,179.24927889994632,179.34443965956885,179.97286293210635,180.64915666020573,180.7444166669032,180.7444166669032,180.81093536904268,180.9027500091919,181.22931705334005,181.47304101818247,181.54527455726804,181.5905199474951,181.901445138284,181.96266545417427,181.98115035499427,182.03760453157412,182.186020671555,183.0384219079288,183.0396948,183.62363405979977,184.3117370627687,184.3594951725316,184.5810626919988,184.6114181520584,185.07600315863075,185.156452722033,185.2364698139263,185.4638523169125,185.7301064338681,185.9547952001272,185.9961624116259,186.1975427802788,186.31262290513777,186.4270748914788,186.6663606509859,186.6881615331816,187.4949667452203,187.60351448398296,187.67615479197235,188.1909109849537,188.3697333334217,188.53305687072023,189.03059304383584,189.10375103900543,189.15255822512933,189.2036755039948,189.3865615635688,189.4970625719405,189.54756830262951,189.654307,189.8318540911372,190.02295401599275,190.512958934611,190.5909508775441,190.7855539118517,190.81665318053345,191.3470611691639,191.6471717844973,192.4974814409873,192.52921516956405,192.81052698266933,192.85379332824897,192.91040706475803,193.3309244451877,193.4216302648852,193.77040100001,194.0860715822469,194.4548025182537,194.5547768917814,194.6536139267655,194.75895396079292,194.8106484456078,194.9843752992074,195.00554044045745,195.1829962021219,195.66547644149244,196.0795695818146,196.37466205919537,196.46981838612905,196.5097327926664,196.8136772269158,197.0475662923912,197.07136892584347,197.1554958846736,197.77859112126995,197.9162901740592,198.0112889468702,198.1968479,198.28426797854988,198.46558114744008,198.76460104675616,198.76861868710543,198.7994585034864,199.09414669961976,199.2407020865352,199.48004974677764,200.59331560855068,200.64542934658004,200.7361977666744,200.8065640328275,201.2578234989575,201.2816610426493,201.50950282072537,201.9657140190249,202.34044518927112,202.5792771865968,203.04619635247724,203.9863375254168,204.10295272851505,204.32231123178977,204.9069199818179,205.18361291223263,205.9804041007267,206.41166454164625,206.62216595767265,206.64757036877967,206.78228155,207.38213731495568,207.44125706537312,207.7895842775316,208.20835751217288,208.49368768128164,208.55088131268263,208.69251591204136,208.794013102014,209.2567858602952,209.9533135622273,210.1168167478068,210.97001750273984,211.4566288903449,212.1498549604348,212.87529054732795,213.4065747138582,214.59195099675915,215.27402742189489,215.9740921965305,216.29724202410893,216.4119601800657,217.9562114098469,218.0274463919044,218.72213568528983,219.18686040952204,219.3292353104497,219.6227388805333,219.8339134609149,219.981233492716,220.3465190204288,220.49960229357367,220.6218315207149,220.62635461495464,220.68754897433087,221.6199591940784,221.7647240180688,223.3542451211136],"max_trunk_twist_vel_dps":[274.13343649079604,314.1098842611524,320.0265232870606,321.60727405441,321.60727405441,324.8273325053548,333.0895428136271,334.84940842673586,337.78503564255294,343.84618078714584,346.9131168191876,347.4752699958001,348.9991971281465,352.2806713722724,355.55413548527497,359.0422308393155,360.496013948051,363.8207036,373.72953398739605,375.430655160506,378.4162014027784,383.4562363268004,387.6090018354336,388.03236426792574,388.9262137778854,389.7048755671326,391.44761833607527,391.5723059326511,392.0004758287173,392.1236874113048,396.996026577105,397.2252269293172,399.3943513691471,399.51021801003657,400.3539340461323,402.5680195311502,402.5737625030491,404.3852373365009,404.7463445591,406.1861894755153,408.762269705124,410.22450035126826,411.06320368817984,414.3354066876474,414.8443680241421,415.4700335655616,416.8336217655408,418.0846948410818,422.0708641567326,423.4365425221693,425.4608068017475,427.7063413456232,428.84423492871247,430.19799932238726,430.3104366471996,430.47123159515695,430.6880496430186,432.0208288822783,432.4348055128165,432.89558692263614,432.94645801876896,434.2363379408392,434.29596496693136,435.1004264943722,435.53694777231874,436.150481982472,436.2740564765411,439.57915012404857,439.89667265427,443.3149810252288,443.5081900874035,443.57725382025023,443.97529038522407,444.5260628725635,444.7011316434757,445.52515389003327,445.638070924504,446.0106554162252,447.5661563386645,447.8028595890396,448.9155285096372,449.1163882428677,449.7185257914351,450.1253353185784,451.2863411663711,451.3551060393363,452.1808475499788,452.8734856888485,452.8981244374924,453.0752324,453.5963868504783,455.4583349294399,456.4445544722605,456.8498960930945,456.92812122370486,458.01409446964885,458.3587930239135,458.68715824257833,462.1212878031821,462.6147350183114,464.140754209291,465.4621506015032,465.7740555198885,466.5996101274706,467.7977933122767,470.0068731921007,470.0529449370303,470.8051032180553,471.7266438688847,473.1156400559902,473.33526131865045,474.6238186593812,477.8484579964861,478.186193602253,478.2316239234285,479.1921766157223,479.4151360804839,479.98462905,480.7912064981204,481.70397359190287,484.9146099728781,486.4244304396558,487.4521226792277,488.2752640133608,488.6150441012567,489.7673139649616,490.4557320505803,491.4077666573128,491.4404918602295,491.9519834627045,492.7466425338801,492.83296648328536,494.9570723625675,496.7506141010713,498.4574220024116,499.28789996590734,500.4234750226692,502.11915481310166,506.6343008575335,506.94982955581145,508.05934612077135,508.1039567,508.845919448922,513.4145813829298,514.312327791989,515.0805626183025,515.3404235794776,515.6055041519021,516.5656758939604,518.8435444690476,519.9929039456583,523.1055387425693,524.26117041879,525.1070285737917,525.5295695283323,526.4511534089811,527.3216231617765,529.3040211807765,529.7876213178397,529.8839954175884,532.3872183381286,533.3485993080823,534.207750711483,536.0977658821006,539.9763450994271,540.381241174536,541.2767914058082,544.9896257592799,545.5120025753745,546.1321816649407,546.5797070965962,548.4097806688648,549.6631408898963,550.3003172017579,550.9276293347735,551.395890227162,554.0367957021953,561.598404694538,561.8019851201682,565.5453524372319,566.2363451896899,567.4054291806372,572.5905486245397,572.8360089333094,574.5581139170046,576.3003715849138,589.477988241156,590.5234452167348,597.0242142541065,602.3931554233425,607.6148668,615.5267545996184,626.246931016313,635.3286439567521,639.4947020759337,649.824468636082,655.2017424000001,675.7743038878828,759.4952874842538],"mer_to_br_sd_ms":[0.0,0.022479738420878,1.3788768817982855,2.0050471471479754,2.0069527980817283,2.014584070404985,2.15476501376609,2.174649406859021,2.200849251013189,2.512335492048724,2.630990533592009,2.639841384577509,2.645680150638165,2.785213522128208,2.811552390926945,2.823342810057429,2.953452377135738,3.070278729461821,3.084208056821524,3.1101927695309675,3.2009816448104504,3.412251324857202,3.434553172056749,3.4389897263777924,3.656221169594165,3.659163541418637,3.6659383253152704,3.685282637614319,3.946588886709472,3.9599736461518544,3.963876361619191,4.056372166127512,4.175178401364305,4.84089337972672,4.875679761627599,4.962799439327074,5.007256508328682,5.1911201189880005,5.372754080786836,5.709065588672508,6.304446208118162,6.363169963271922,6.411869810616723,6.524071243052,7.0525185647920745,7.374699537039657,7.779886413774765,7.929629135658555,8.225632882915297,8.831995042048757,8.843351655462738,9.027749746435866,9.725048102164305,9.907522657509878,10.854689961827493,11.04217167652311,11.336356762652464,12.638521046447158,13.3832148175213,14.45007945243914,28.88335534477685,32.272761677697794,35.45929570417801,38.034637942077474,41.186701050295554,46.805506603839085,47.5215445599462,48.51959153678615,66.16829537722836,70.66750113100365,80.30039335150263,105.1761117146826,133.8264090672043,140.8076172755416,144.94052446800742,146.89911543157916,156.43766965604783,168.3874893443795,195.9993698227599,212.15576963237567,216.057213585354,218.9554428854205,247.9456794651482,262.38526964541046,281.83486477475947,436.8840260564171,455.7803744245971,458.709251817826,481.4003538427194,482.14178045249935,526.0556432585349,528.2381261225262,532.1292855337698,548.1962746092704,554.4240901119845,585.0917957668316,627.2273259974078,636.7443558045464,643.6849541541827,653.3234322854041,654.626008084487,661.038721669294,662.0602618222204,673.8640378768735,677.0216966512131,679.9690563759065,702.4409121800151,703.2339695167612,713.3107353395746,715.6067410281241,786.8686105450163,808.9708978439035,818.7156263973479,825.7876380308768,833.8905582939093,843.4302780187636,845.5555245805367,846.2025015401676,853.1452075429258,860.5591046736998,863.113347714397,866.7451275721324,875.5328639711829,887.2320306946775,909.6755266028742,909.6755266028742,915.038591018122,921.8082842140354,929.5819886014336,938.25225064159,954.8486979231214,957.1805619910396,958.2492419934975,988.2164803650612,990.4034358890964,1005.4905765192448,1025.0880212144118,1029.76205757999,1032.0701664151777,1054.6285038762394,1070.965967846761,1078.9663950652018,1080.036627585061,1083.742797741102,1086.7567261502156,1100.5174930463943,1113.385686530893,1134.7757792349423,1152.3497962643655,1159.020912231131,1162.4485571983748,1179.2315755299026,1183.6958967309365,1193.2167546483054,1193.4508501371126,1200.3788873804256,1201.1115549809426,1216.109018080229,1218.2209630869177,1227.7542444580272,1232.0082750539389,1244.7723101156714,1254.777224099608,1255.523676922241,1255.7218125133295,1257.379564212964,1270.2450508882655,1283.6951795792204,1284.73541943638,1285.560247973591,1289.3362372112365,1293.6434378318847,1296.0533314342936,1303.7296660853133,1306.1088228167582,1309.80427933242,1333.0376865181213,1338.4007841753728,1339.0737175845136,1375.5507574609574,1376.4843123344624,1378.122010763777,1392.1093051685048,1394.1005470681885,1414.6120661791474,1419.4675657930304,1422.4840781308278,1446.4361314340529,1450.9441550971635,1451.5714752914594,1453.814901843271,1462.1548223823252,1477.4639486869887,1486.6858275649197,1492.8138742356932,1498.9517852540516,1508.7203795975604,1512.6738150158908,1518.5953582828138,1532.8814920727143,1536.0424570504622,1543.8902760690762,1560.6893737039463,1564.0287235645012,1568.192146905579,1577.8136191205017,1600.7133410882116,1615.5663638305068,1625.3405899395111,1625.7365114159054,1630.5073890775725,1653.6062403841315,1684.600945847826,1710.77279255618,1711.181477083828,1773.3378163566,1802.7961982588445,1853.14805847148,1901.416278949589,1978.7724433167773,2053.204604528264,2056.187232504564,2069.405075023455,2099.0845737914865,2130.7825341730827,2140.868130612488,2171.4127083423755,2207.1126590499284,2409.377193800187,2698.6080957344097,2808.24799733703,2816.779996665645,2891.741224748656,3406.5039166251445],"pelvis_to_trunk_lag_ms":[-330.1172625245864,-311.20846516804426,-162.98607129204893,-79.36662485096866,-52.1737230276569,-50.12642618361447,-37.59095274120208,-35.51762192379361,-33.400562699473014,-20.877953641568936,-16.711041544793858,-14.62242229441718,-12.536637301239416,-10.44557752739427,-10.4356933469986,-8.368794326241135,-8.351603735282175,-6.261169564661294,-4.178981937602628,-4.177986764193661,-4.174232598357112,-2.09062980030722,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,2.08590409970807,4.174510455778057,4.177218353210561,4.179240969364426,4.1802894987667205,4.180788164262201,6.264290705800139,6.264411990776326,6.268478771907979,6.269230769230769,8.34276475241059,8.346669280512312,8.35719968178202,8.358694485339221,10.436355141799492,12.534607646946116,14.625802553762613,16.690470166561248,16.717479440251715,18.81153327451401,20.89157030333501,20.909011564049457,25.02782930895439,25.062885495454,25.07702055758941,25.077678476744907,27.156104943840795,27.160936730039765,27.17275148456814,29.21372107090227,29.23177264258195,29.23225807206802,29.24073228475131,33.417776206747575,33.421641337534425,33.43038439047069,33.43565525383707,33.44639440161828,35.535117056856194,37.54712606297126,37.58656934861531,37.5887696557586,37.59588167364916,37.60483224586408,37.62398048030046,39.74469411619647,41.74773022049287,41.75531914193993,41.75568236907351,41.763929214326346,41.812428886419056,43.83764941327293,43.85047286902188,43.88020365792467,43.88492850812799,45.93755476484191,45.942714884132606,45.952268990211,45.961436797885405,45.98491348491349,46.03678649298373,46.04589371980678,50.14767255216694,50.15932108681986,52.182955791012056,52.215399153835484,52.21610096606148,52.230566538283824,52.23529047268669,52.270236870678325,54.2496115484099,54.27059847543674,54.27268312349955,54.29377305499665,54.30538413256544,54.30718827459855,54.33502203618808,54.342206790123456,56.43152820066696,58.446487922126856,58.45205057045945,58.46746336929186,58.50036801469085,58.55016479526283,58.55952587955718,60.58229314116588,60.583112874779545,60.60092295647199,62.59656666556411,62.597016965399646,62.6169859237951,62.637889278610366,62.64381371701131,64.72142682653491,64.7409149149916,64.75028540670999,66.81115549995542,66.83488834045627,66.84499484004128,66.86093365279594,68.9073672478557,70.91993406570359,71.0115987564435,73.10109812096564,73.1052267582056,73.14868804664724,75.14850865416017,75.23753119440232,79.40641532470337,79.46695902721962,81.43795311175973,81.48160383883707,81.50287507530867,81.50619971543136,83.55805243445693,85.58737090749287,87.67847181497004,87.70774433027424,87.72807898174324,87.74407615473507,96.08768763498492,100.17070206723466,104.39497716894977,108.53782612674628,110.66025761332318,112.76080915733742,112.7976637966496,196.3578008289913],"proper_sequence":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.5,0.5,0.5,0.5,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0],"proper_sequence_pct":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,10.0,10.0,10.0,10.0,10.0,20.0,20.0,20.0,30.0,30.0,30.0,30.0,33.33333333333333,36.84210526315789,40.0,40.0,44.44444444444444,47.368421052631575,50.0,50.0,50.0,50.0,50.0,50.0,50.0,55.55555555555556,57.89473684210527,58.82352941176471,60.0,60.0,60.0,60.0,60.0,60.0,65.0,66.66666666666666,66.66666666666666,66.66666666666666,70.0,70.0,70.0,70.0,70.0,70.0,70.0,70.0,73.33333333333333,80.0,80.0,80.0,84.21052631578947,85.0,87.5,87.5,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,90.0,94.11764705882352,94.73684210526316,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0,100.0],"release_height_m":[0.150232522675257,0.1720877852347962,0.1882111218896899,0.2036671853946365,0.2116778311513562,0.2292889906143436,0.2387272313193916,0.2393952789243313,0.2419970746971062,0.2452690929516665,0.2488453084222801,0.2553671921824663,0.2625369379583108,0.265924262868236,0.2706773384686002,0.2776101009367671,0.2886691004253382,0.2896932224989863,0.2959022357823275,0.2991795557222449,0.3031805818040883,0.3104230865813452,0.3173470760351622,0.3198394595744785,0.3219913456855049,0.3257587647872083,0.3260524047745773,0.3287147922813104,0.3325531950090667,0.3429693904454934,0.3465353987927947,0.3466131029036884,0.3486479109268549,0.3496295346726208,0.3506886327955274,0.3547472832171175,0.3562943884103051,0.3572341980433406,0.3575216968309282,0.3588294641931232,0.3603966389901488,0.3614479046766262,0.3631836369632433,0.3663775941061001,0.3670679569761275,0.3705437031728516,0.3729320298438653,0.375346158827623,0.3753656302896225,0.3823074709208598,0.3852748340421452,0.3892299384125188,0.3892903344652346,0.3906285531361823,0.3937154325631034,0.3940668232369139,0.3941236966492251,0.396983033,0.3971551915892684,0.3978121998515784,0.4009697659050447,0.4021776680203105,0.4024205730180826,0.4025172263798017,0.4045191413121082,0.4048822607777778,0.4056472461339084,0.4095518888523228,0.4107765942009589,0.4108936692163811,0.4126096258149537,0.4136876896599058,0.4159561046226412,0.4167539198778976,0.4181509397255202,0.4187002956574187,0.421409282613726,0.4235664827340885,0.4260778436908136,0.4266245991361934,0.4267449831525744,0.4274222897605318,0.4293665190045933,0.4309999433908041,0.4316654676453762,0.4331318465208351,0.4331371162054375,0.4333909143374637,0.4338249100509341,0.4346832480308317,0.4351569515391226,0.4374229797770832,0.4404520434793119,0.4423531137572475,0.4423844313586011,0.4429204744727938,0.4438923177446013,0.4440328516787027,0.4447759474427536,0.4454352791873381,0.4458405756320258,0.4461005301153384,0.4461051623969447,0.4478862525522834,0.4488005163350959,0.449410502953986,0.4498289599950883,0.4525032752880747,0.4532127997589035,0.4535653982624578,0.4542179658497919,0.4542464448051371,0.4571667053008689,0.4586743068656808,0.4587061334788481,0.4587896911338044,0.4605379574793394,0.464811070431626,0.4658042735272702,0.4659438039102087,0.4672115320337737,0.4675113935559375,0.470584817731373,0.4713961045801076,0.4722270970045462,0.4740606020544958,0.4748153595988749,0.4774921260916729,0.4797369178487202,0.4800227411559621,0.4802450320696207,0.4806362753885063,0.4812544577064813,0.4832197775135674,0.4836581794724875,0.4842815928341216,0.4868486927,0.4874384217078279,0.4911002766761596,0.491528112382109,0.4924558902502661,0.4935960642065818,0.4947705810638599,0.4954742940550667,0.4961063685588936,0.4976707525282061,0.4987848156141859,0.5002459577908219,0.5025101259079036,0.5030448398803378,0.503289966879723,0.5040116834583709,0.504311517842214,0.5048474355532356,0.5059579452680084,0.5061011490879359,0.5065167194523041,0.5081447356562514,0.5086257280709754,0.5091461834237558,0.5104144289620633,0.5124642041,0.5134418381726601,0.5173317545055843,0.5195717710542265,0.5202843339955086,0.5203765121222789,0.5232512511329872,0.5232512511329872,0.5237001135398437,0.5239877314126817,0.5258988339225381,0.5272925583105388,0.5273571855242677,0.5293424739026199,0.5326936783415002,0.5333918703352334,0.5336043644,0.5339978054106146,0.5351311370283097,0.535627506121356,0.5365054122348291,0.5385290211730495,0.5393265587602027,0.5413219825022988,0.5415540215261595,0.5428618629363402,0.5441233417927787,0.545179261464414,0.5471304026106435,0.547754201949106,0.5491889822078456,0.549964842437977,0.5502582177842728,0.5510786430824701,0.5515228255194277,0.5517146446913446,0.5518483574902059,0.553782540261005,0.5543681671041447,0.5551554795080843,0.5555998762,0.5561819637324693,0.5565612206084541,0.5573842805154068,0.5595955843731264,0.5597489246606937,0.5613136985901859,0.5617295056555278,0.5620710360155631,0.564840004282614,0.5656368686435034,0.5661635524866345,0.5669062629893382,0.5700609520862364,0.5714323524234719,0.5765768886801055,0.5772722946261059,0.5778369079160853,0.5819267083429551,0.5858035198184217,0.6028128372224435,0.6108809405248008,0.6173360323198862,0.6255034123205826,0.6255521723490932,0.6365571581417248,0.6428854280358819,0.6443549697114477,0.6502689783336408,0.6555315202914491,0.6636655855582003,0.6667233066188339,0.6951886336152436],"release_height_sd_cm":[0.6588768219501759,0.6640505656402519,0.7321336567773963,0.7422749895736098,0.7442290801899348,0.8110497141079342,0.8110497141079342,0.8302210395600171,0.8370160689788712,0.9348001236104896,0.9379644171480508,0.9435825744540696,0.9438488385064294,0.9663330632554008,0.9689906597645588,0.9867808261792176,0.9891791796828882,0.99460640196962,0.994815630843419,0.9985311106433864,0.9995541315739296,1.019691575886012,1.034015073279452,1.0384115435605945,1.0527001792879864,1.0537825566129262,1.0554752549632822,1.0621921057730808,1.0629033830890346,1.0635451449843447,1.0852087459551314,1.098701733754477,1.104510725077354,1.1055196307885988,1.1231590685356465,1.1463921226305838,1.1673966574824814,1.16890121706062,1.1842676092912523,1.189344467352654,1.190062233322985,1.1902859947324576,1.1983721189064596,1.2160898367601136,1.2256561513563569,1.2285015898101792,1.229009155555039,1.2387365432747524,1.2390282304529163,1.244491703939063,1.2479324448575946,1.25499041242318,1.2630404226057228,1.2724567897764698,1.2821960233902447,1.2894213840159343,1.289909453690704,1.2926523900751086,1.3121383959693085,1.3250319033208422,1.334601853068491,1.3374616814901774,1.3396009272553222,1.34015345481723,1.3509641121475442,1.357308248372024,1.3636313083552474,1.3736867931962344,1.3746819139901172,1.3948747299965727,1.4173047940523062,1.418123672615914,1.4263617064798462,1.447560699119198,1.4512439090774398,1.4631805547932986,1.4635634785458398,1.4772342517261476,1.497515334312519,1.4986818358648597,1.5106864673862432,1.5131276802481022,1.546860621179091,1.5481715473761184,1.5506482442103673,1.5676320683579117,1.5682461442995,1.5696314821827724,1.5813222606551345,1.5826079367572738,1.6033347201920192,1.6103187611614462,1.6166481299799882,1.6218616244200068,1.631416903155308,1.6327866057006184,1.6362730681157327,1.6512716445037046,1.6600826862718543,1.6779073450799618,1.6823228114912652,1.683755325567699,1.6847594165682815,1.6858020564914529,1.6875334177161048,1.688666665849807,1.7020680050928678,1.7102786106448231,1.7112284686419377,1.7219915143373572,1.723492991597578,1.7351610269646711,1.7355600651274707,1.7409787399777947,1.7478309003483423,1.755125255015149,1.7736321667050432,1.7757587616216022,1.786409214156182,1.80696650101005,1.8199899126236545,1.850901730586154,1.8522982595258504,1.8619678709193213,1.8638694102625453,1.8757969226813,1.8881475260082887,1.88928914925078,1.891100535034812,1.8975066740092783,1.9199938944463075,1.9323329060297303,1.9410503027807609,1.9742383649480708,1.975477793238353,2.020551541411978,2.0558283732869627,2.1248306100717174,2.134012589178338,2.1342233922158464,2.155860107716923,2.1604219349374434,2.188547991924956,2.216738354499544,2.2283844771333454,2.245265475544916,2.3190546677392168,2.403760123437772,2.438460143445193,2.449560149755243,2.46597438447874,2.479341922172752,2.5087803299150955,2.514556788884511,2.542031042817193,2.5426487078593167,2.578142913756744,2.579099994243931,2.5932664886553454,2.594789458847064,2.6767793233728203,2.7085452945701225,2.7236831120499847,2.7848259325701874,2.813433655602429,2.837860921734494,2.8409627194008373,2.855026016528335,2.877807868634481,2.885635968806059,2.890988961623113,2.9657674591302894,2.9880516652838494,3.06628362828036,3.08347732294082,3.0929516110207125,3.1723110586675465,3.1870979665968817,3.198897871131951,3.303281758584668,3.4590421360198964,3.856926559499048,4.035898366742027,4.048374938740411,4.0531437316588566,4.077739726873907,4.298752794890729,4.78227963067582,4.858142185609273,4.8687057849125015,4.933970134283324,5.040967772305895,5.132480535106883,5.149235263143113,5.319475221172868,5.465292086123123,5.473137045559416,5.4882103691515765,5.5633802798915175,6.113181330275543,6.116112522830539,6.156920698958763,6.465326070604712,6.69448652440828,6.717075670457959,6.730839230298476,6.75548701038384,6.764077381722651,6.943161418482519,6.972449764277064,7.476378610297947,7.869721206530269,8.195252018154477,8.241043150776726,8.281299061202876,8.502355495508745,8.795288852522253,9.144429266232091,9.154102293058632,9.347645898037555,9.723696866653787,9.80433824276282,10.016657365665948,10.34806386141232,10.532115997917035,11.548721300256174,11.956939424389068,13.54086098851944,13.899976204820122,14.734812850023053,16.40976343481221,17.156122210401662,19.485537599371984,20.25092615568932],"shoulder_h_abd_at_fc":[-23.07397280014107,-12.372006304186035,-8.125591927938911,-7.188513638,-6.616227043400271,-5.714419374657694,-5.504825422094778,-5.504825422094778,-4.640268611752879,-4.320442527361248,-3.4729751390239176,-3.452982265628174,1.5349325236298916,1.754433199921115,2.958131491325631,3.395484077111899,4.483164326043712,4.507754910963652,5.674883972590266,5.6928073795053455,5.9895349135988845,6.0661703891486844,6.307586672057386,6.367589853919314,7.256021600905187,7.950743817199868,8.010316472388764,8.179557994889475,8.439385596835665,9.2084127405623,9.611386731078406,9.740179915,9.758162059695916,10.418331485250324,10.564960752841468,10.823193065087532,10.86960575217172,11.334332339177202,11.96241077587264,12.268710084072312,12.381828521262168,12.70824829781144,12.870944283705942,13.18092939368355,13.888477068852255,14.018331854019468,14.10788968345735,14.118697185417105,14.719013780829856,14.771459543145138,14.873871760924663,14.941153058332771,15.258373363528667,15.536826517981329,15.578073619405291,16.252694129970575,16.683916305638213,16.85540534943071,17.279639776848487,17.806955639822807,17.875077460826404,17.898726714811968,18.047158425747064,18.27534704617448,19.06717442972888,19.860755722776723,20.015975537734704,20.15864167161183,21.66955365304404,22.018008708567017,22.13743732598877,22.413619304923927,22.953590557047782,23.0992915374197,23.35506595164563,23.41411258767754,23.57893965962994,23.58732636741028,23.706550091143388,23.832371052101504,24.15229699182734,24.50661013772156,25.759796786186925,25.77245257932056,26.06992490792512,26.11152474505483,26.461935027342808,26.501560123044094,26.55842772777373,26.57401733805388,26.692992743288418,26.89906463913928,27.59197034920914,27.858907655904325,28.302342046918668,28.320196853473508,28.53774718610937,28.92903875393345,29.027153346405008,29.0924891177089,29.16073182809276,29.30754623006388,29.401973868661138,30.070565754459142,30.27108114358158,30.519405497418617,30.742933334291283,30.75892823233619,30.81748241,31.111837184332536,31.43763055857013,31.5628176294306,31.748322118456905,32.35393255557907,32.38122569612094,32.38220368596343,32.45219126918283,32.580157885000006,32.69324144728438,32.83715790580935,33.53336622435321,34.0761317153958,34.360821542711065,34.4235882084981,34.45059572711175,34.671354368226645,34.92913449940896,35.09805973999451,35.231245476291626,35.34928080861678,35.385079315,35.41303070652528,35.691506458512464,35.83780679919644,35.89658399325996,36.23208197589469,36.42815494992172,36.71869058905818,36.853673592651184,36.972251345264254,37.04008927793117,37.19200850307816,37.733828190210495,37.74476767855279,38.60321282872189,38.66603110272345,38.75386453583246,38.884658051903855,39.374420019262686,39.41985996682741,39.464000284585865,39.48747021609083,39.589550335890976,40.09716990701405,40.11023575347211,40.217428784872574,40.70723580234432,40.8141584078851,40.9447133734429,41.703915876818286,42.15077067949419,42.331129344125095,42.4106187835074,42.82266829075618,42.99964566870348,43.20137101016715,43.48529460097651,43.695636624227525,43.82063498539303,44.01850416430483,44.455809127809225,44.83302344755892,44.92177181528272,45.51383503337109,46.03012771209539,46.18474243510184,46.58006345954104,46.82394071399384,47.26372718201308,47.26939708880141,47.76389476784402,48.29469191189472,48.430186302787504,49.38381297184118,49.88122388672645,50.62590395943095,53.78063412109978,55.3508647726696,57.34129878,57.40578397885255,57.90479519036101,58.34546005402351,58.47192355830346,59.51204096684751,60.96144757237565,62.68557715438826,63.76516351909416,65.7993441348872,71.54846259913826],"stride_mean_m":[0.3881464774298416,0.4933809758327142,0.5257508269026299,0.567586253120909,0.7565149166192942,0.820513010910364,0.8353814861842996,0.8442412559587279,0.8485101573516337,0.8679226021456256,0.868305380455779,0.87069081252999,0.8712014554663984,0.8843609085856279,0.8883178153443753,0.8916487531979259,0.8979385437099301,0.9087494397124152,0.9116234745932342,0.91903516824768,0.9202222171580636,0.9203864452603132,0.9204586687694508,0.9208565273541934,0.9226339292091058,0.9260180858343596,0.926129342638047,0.926325452824839,0.9309130187488628,0.9320532668261066,0.9321679436081298,0.9333898638106184,0.9347879792530138,0.9356404972452964,0.9363917853938142,0.938009682817288,0.9387989229679048,0.9392438071153844,0.9398781206691048,0.9403557646843954,0.9403973802836316,0.9418485576383644,0.9420053125764896,0.9425429079633322,0.9426329541646372,0.942749929737691,0.9437005033914462,0.9442431368810787,0.9443125750106852,0.9456952467,0.9493232163600178,0.9507205648195978,0.9520370394948272,0.9524551640447728,0.953901322821101,0.9541937822673148,0.9574625564532286,0.95756669353544,0.9611192408644332,0.9612830269854078,0.9618123146003864,0.961947201472526,0.9622711610494216,0.9638461001015346,0.9646263456626428,0.9659364504231212,0.9676914216227848,0.9692628220679598,0.9705673367106102,0.9725000229903004,0.9727030721792854,0.9734633488565552,0.9737223643404944,0.9766371232750284,0.9773276347664428,0.9773388582380826,0.9780756928561944,0.9787604252808906,0.979162369787475,0.9792395302890576,0.9803147691751124,0.980356570122268,0.9807216659525908,0.9807234618649858,0.9819741433511744,0.9828143935910164,0.9830369962048098,0.9836034273377215,0.9857830600159012,0.987947700813274,0.9881086379,0.9904492477863368,0.9926710709479174,0.9933037307892286,0.9957488272099506,0.995910090646697,0.996161354380949,0.998123390036066,0.9987532475362756,0.9992650968200588,0.9998255936912296,1.0004005711813644,1.0007495492560416,1.0017486193084184,1.0030525901317575,1.0057214543459905,1.0058340381466202,1.006344691276412,1.0069803962678312,1.0084731022467428,1.0093366843333331,1.009984765156256,1.0123366710501172,1.013200058321002,1.0149551318441454,1.0152487693182934,1.0153115738484255,1.0163542595722088,1.017170039647973,1.0171763606415003,1.0201002053795292,1.020169586416804,1.0202903165901565,1.020431687683398,1.0207975900004134,1.0216864741405902,1.0217278785196464,1.0222843128660797,1.0233169997407652,1.024107971469925,1.0247455593244106,1.026687246632537,1.02733862278407,1.0273689033720868,1.0275775289037812,1.028249751780887,1.0287250303045528,1.0316435311802334,1.031795368161493,1.0327069786372876,1.0331089889341825,1.0334161546694096,1.0363652026760246,1.0377841347127283,1.038810444625894,1.039079206834014,1.0398411401987362,1.039994324604348,1.0410561565018703,1.042709085012015,1.0444371433301671,1.0448268693531575,1.0468698004157384,1.0472624793225576,1.049125401335315,1.0495243541427377,1.0500750614182572,1.0510002779099827,1.051590962601812,1.0535006937876146,1.0553671391510242,1.0574836993664023,1.0574836993664023,1.057697219565369,1.0583571541777534,1.0583741887959124,1.058693355194311,1.0588814989297353,1.061501814857015,1.0618670130188437,1.0625186117510244,1.06303379570355,1.0632374981237214,1.0632617002,1.063533150074731,1.0645809603246308,1.0647486440055796,1.0654306786555725,1.0654467986098486,1.0662188811106506,1.066309567586771,1.068059275853613,1.0700031266072911,1.0719954738662354,1.0739591911125743,1.0780709554829138,1.0811624499952213,1.0844870228,1.0853832981894729,1.0865453193061658,1.0872435039549866,1.0877189419013225,1.0919902912777992,1.0931182879120451,1.0937354980491347,1.0963637723817143,1.0963896563661093,1.0990066061458337,1.1041072813974238,1.1064670227187272,1.1068871562477025,1.1093508250362452,1.1109518836699668,1.1123097955029146,1.11270728301514,1.112874534125896,1.1149671548929183,1.115739154152386,1.118423105202186,1.1188205050830438,1.1236682495080423,1.1241381534944577,1.1290916424304656,1.1307740547578964,1.134099082414774,1.1341916380702557,1.1346843504039597,1.142915063808421,1.1472142624379364,1.1505222259261374,1.150842240652462,1.1539365777508537,1.1565631191111112,1.158328164939602,1.163308703490734,1.1679369103339918,1.1726440379962355,1.1765863515175898,1.1773044457326796,1.1825076522734936,1.200525763376123],"stride_sd_cm":[0.4533069280178254,0.485487923335215,0.5083803370990689,0.6084176431898483,0.615673219136874,0.659766277084142,0.6664645065141055,0.6710307445552599,0.6774646977406487,0.6862812810110286,0.7423137641406966,0.7516660747479834,0.7857297540807235,0.8055870261663737,0.8087893991399148,0.8113639407131359,0.8354920887298365,0.8377830676871354,0.8414203702454307,0.850749908676791,0.850749908676791,0.8566961669000629,0.8647792151167187,0.8693709483402909,0.8781639968869746,0.8805802258160207,0.9010986583762524,0.9038493430017484,0.9052430592071612,0.9222692907822791,0.9284024084866264,0.932286631622138,0.9482320633016516,0.9784323247261898,0.9801491103046852,0.987774796736284,0.9889750467204635,0.9919141649420464,1.006736573834451,1.0076772873777586,1.0232383514652794,1.0251428629843655,1.0326700733695997,1.033867721541905,1.0581296067691206,1.0848764660407226,1.095259208801587,1.103780871275293,1.1192225972005088,1.1345643236152458,1.1378939081017276,1.1412673436999707,1.1466128718333373,1.1514289250730456,1.1589271664496823,1.166569354061851,1.169106694410314,1.171673599916608,1.1760219983993208,1.1770324187623546,1.1867942026719642,1.192284730490277,1.2050935352665886,1.2051244974460915,1.218083999412513,1.2223907167246455,1.2433781081440591,1.2484927389513143,1.2529324556877668,1.25553861095185,1.257057553824685,1.2663913080847535,1.2712866183242435,1.313534931356083,1.3150530599983017,1.3219683491817118,1.3341434614721313,1.354665109888322,1.3564898655434496,1.358130026566258,1.3629876002671455,1.367015180857028,1.368220549998016,1.368454697822182,1.3692802287683226,1.3731195487660863,1.373351131639842,1.3852196923707627,1.388781910505085,1.394895276194119,1.4295964014315865,1.4427933145017775,1.4509831552906522,1.4594311713954569,1.475457806135736,1.481481297960756,1.4892703823483195,1.49310813005359,1.503635244161379,1.5094775487006868,1.5165233364938486,1.5249519759360537,1.5268486127363272,1.5292542088719423,1.5320206321518344,1.533628011758812,1.5446219715002143,1.545673190469069,1.5500633876229142,1.5625084827492377,1.5798745055603531,1.5849579319373026,1.608807478639264,1.6134544166441958,1.6167285712040451,1.6342460508883838,1.6476911060663018,1.6529278933838456,1.6542971509809403,1.6618091009436655,1.667744721352049,1.686168295405113,1.7074411100682017,1.7089520734419938,1.709580474630611,1.71643424365147,1.7356124887925015,1.7862400905293028,1.8139265999087704,1.836593654842109,1.8413594489787533,1.8416026387506448,1.8424510020058045,1.8426848970436545,1.85679304700766,1.91110310659112,1.9163517360931324,1.930979528577104,1.963021457402811,1.9699720888558112,1.972521498457804,1.9822053331925888,1.9867826340318104,2.002287668948924,2.0031519349923683,2.0137054004414434,2.0196631677061467,2.025455530382765,2.066262637396119,2.095954546631149,2.096539599858666,2.111979943807916,2.132536486342734,2.169018772631337,2.193123438769428,2.193261264112669,2.200455352401413,2.2008487989496546,2.238873305906107,2.255731922550224,2.2757060187827176,2.2813000441482747,2.297025609850494,2.304127827541533,2.313640680893646,2.318011391605778,2.3214955601456166,2.400629006408697,2.4222300557709184,2.425938655311949,2.427121973605929,2.437176666778944,2.438576746322696,2.440791437431004,2.461148040508747,2.4961921507652494,2.509172139660792,2.511141730780857,2.562029911280448,2.641255062245982,2.6671241322161165,2.685449374649988,2.7050461794237046,2.740727210830152,2.803847664922631,2.825660124850718,2.831290071736277,2.845487719594604,2.907478652516577,2.9118955943674982,3.115358778279042,3.14356569308626,3.203385560100476,3.314764867028696,3.450336143919758,3.521141870407748,3.53430999305482,3.5402693418676585,3.555063474700911,3.711341709996358,3.7857558174366575,3.866164718307997,3.89842060420389,3.97688328206661,4.01743301640727,4.4965854020680736,4.584985963848489,4.672230480352162,4.978763607967037,5.05971069517235,5.111221834033362,5.532033263914343,5.570243353621175,5.606364241324667,5.775670148161197,5.993077469290635,6.313218243661341,6.8440394998687815,6.87054801656237,6.916672885953284,6.953772751974246,7.016833324591358,7.670720232466686,7.68550772021728,8.332600519377058,8.805456801823034,10.857706577676048,13.046026443782376,19.769251426484143,29.09942702327045,32.390996303537726],"trunk_flex_vel_max":[276.130722937184,297.0566990997591,314.9787768628452,326.55021177907724,331.8376456013068,343.3010337732296,370.4289997280603,374.25077271075247,381.0749540536676,390.5460766664743,398.1292147191722,401.6157291790835,401.9417729388987,401.9543740757739,407.17489716759,408.9092201375463,410.94047188196646,412.7536714426445,413.7826336703088,414.72076652877433,416.0330675250832,417.91516661419166,418.4285658537524,418.9868575376454,419.2647985054721,419.6728192258793,429.0047527168155,429.6594860264586,431.8807141563685,435.90060304888414,436.0022046388944,436.0022046388944,439.8151259082717,440.18839636448126,440.4351839800335,441.3794859004596,444.0798705402879,444.91269618130366,447.010345692713,448.2214154723674,452.03219037241,452.646528641164,454.03035263665873,461.7943860621293,463.505338886106,466.4032639523187,467.5776592353593,470.163518723441,470.7926390656561,472.037310108982,472.8078176264819,473.3832179476043,474.81970646172607,474.9481462036207,475.70899052875,477.9371643455482,479.1777952511024,479.7135340678308,479.7719913008167,483.2881748575663,484.4171885455045,485.7627568816909,487.089349143252,487.5370720835424,489.3453443674247,490.3585833065245,492.2815339991719,495.4536303205055,496.8659128912151,497.2150739266282,497.29061923821166,498.303870233909,499.709557281128,500.1690152159398,503.7006888971855,504.1365581451124,505.3583855513045,507.87708971624863,509.4848719406152,509.5107779701116,511.2880936011843,512.6999228183447,518.5581497398343,518.962932547963,520.1568840331445,520.87955315448,523.86071027857,525.6626430559239,527.1494594087229,527.6046250515737,530.1756724264987,531.1247247032081,531.4090940755793,531.6049371100048,532.2625698735649,532.3254124041007,532.9103639489106,533.1284602163654,537.9060721413364,539.1626342322735,539.6540154936961,539.686173008911,541.3305707135736,541.6716716660897,541.6722132629804,543.3136107165487,543.3548572813197,545.5005815411571,546.5186347222373,546.7007695986877,548.0528649169537,548.51571827565,551.1212742565426,552.6948616079849,553.2642998005572,555.3795211152112,555.3965106205701,555.5497686866306,555.9200755773169,556.6012463568416,556.8112949060865,558.2031424897752,560.0608544862827,560.1280039320065,565.0777419669632,565.7508172290018,566.7747072972094,567.3959896012248,567.9526277305868,568.1191884874374,568.4015506444027,568.7128801413917,571.085570649622,574.5332011069386,574.7926381980251,577.2590088739153,577.4512623206092,579.073374729262,579.1435472974701,580.5646812390371,581.3047426598629,583.7150586822944,584.0404002938254,585.9659235036703,586.1839348370986,587.0833283852373,588.2067110326366,588.6900953685363,589.5140754672731,590.7417610379254,590.7866596285633,592.4388127859758,595.0971546043659,595.9547558564143,596.9013058000346,598.6093502017883,603.1228335708904,603.8837610199894,609.130283950024,611.0496764732716,615.6479514542805,615.9906953436164,621.0574632052685,621.1834330189699,621.4651492539147,626.4187049725168,630.7978137301548,630.9490686440477,631.7294610056836,633.4664423168583,636.4278868978706,637.2253548198763,649.3905016080276,651.9087171483268,652.0319046826653,653.274642407066,661.9905620615637,664.0395866676017,664.6539036366426,668.8272135898524,672.6495940528592,683.9965300916658,689.8537990282435,690.3182384588283,700.9362401490254,704.9422939956693,705.8347182151654,708.0238589458004,711.1606885522724,712.3522140007277,723.4797682080684,733.5193675861317,745.0978523743572,759.1081466619669,773.9735061464156,793.866146667262,821.3222501444131,829.758818026461],"trunk_rotation_at_fc":[-204.4231998234211,-169.0508618009343,-150.00828435909025,-133.98098866489727,-132.8336186586092,-129.8776357746019,-126.4523856045679,-125.67567139159968,-124.09188966205583,-123.2086863216948,-123.1703846088445,-122.82347879500254,-122.26975125220363,-121.22833181742716,-121.11413456651368,-120.77223923182518,-119.57851545,-114.62768638582662,-113.56902736783388,-113.05297319732937,-111.512726747219,-110.66193603246052,-110.55134866014777,-110.164119259134,-108.6629801787387,-107.80369644128982,-106.76259720690273,-106.584931532924,-106.29709919720308,-104.80012028338128,-101.64953924867103,-101.39559917434332,-100.23755389697662,-99.048314105,-98.9695652480246,-98.69669689798292,-98.37081748574792,-97.81766614263807,-96.62717528537056,-95.52213418058606,-95.44358510903685,-95.31332774669715,-94.07546235155408,-92.63628870593226,-92.5353682355081,-91.85291705309145,-89.71084739300878,-89.02862246943255,-88.2791749515644,-87.96012512178014,-87.07406606408799,-86.80786851289373,-86.58414068820561,-86.06554179038082,-85.5797097584095,-85.09797071502275,-84.8280415357014,-83.91597861815683,-83.7673890587184,-83.50762688027373,-82.85278827003816,-82.56798116020468,-82.36304999517131,-80.93907627062553,-80.50831377502425,-80.29508312292326,-79.99399241420213,-79.39540260654054,-79.14444562035999,-78.76527175588038,-78.3115591546497,-78.14718333862749,-77.80632802,-77.69937539265074,-77.57359790524751,-77.56428873899824,-76.86736694168505,-76.65818638609687,-76.44087424725512,-76.43077817806073,-72.37534100991645,-71.28497567733919,-71.0641474597909,-70.35566646,-69.51064809524314,-69.33915140739575,-64.08639275546815,-63.97497371040971,-63.15301164805553,-61.23425483883111,-61.232429378725485,-59.78165006465385,-59.47502788877971,-59.33664286153663,-59.17127384594997,-59.05919140457706,-58.50884572593494,-58.41488034475992,-58.003222330102616,-57.7125268840371,-57.06495318615539,-56.95662643246069,-56.74983745635929,-55.141473354296885,-54.83884354168996,-52.773200438248175,-52.53226808172319,-52.31064247950809,-51.79317330677007,-51.03522428463448,-50.584685769358686,-50.30866987308231,-50.285038568844094,-50.18271039068251,-49.04255663014143,-48.88176894579036,-48.41918488745559,-48.057240442688425,-47.52181067622567,-47.3957853574197,-47.03310602373381,-46.21476128203394,-46.21462142621321,-45.82252312953312,-45.29081909567397,-45.018174358714674,-43.49488882832938,-42.81101061170038,-42.67727477261969,-42.11973480949533,-41.89620365127246,-40.91711347659759,-40.775673389696045,-39.994036587803286,-39.85756701964267,-39.33271649174248,-39.2831368071043,-38.88371986195912,-38.71621896274077,-38.470498872358334,-37.3815218341692,-36.91688721429181,-36.05744705793454,-35.768321923270705,-35.75660122797369,-34.432320057081725,-33.85869085370497,-33.67243876088992,-32.7090328079662,-32.60617875207949,-31.67499584323321,-31.2856993672646,-30.9718075561638,-30.567621858759853,-30.431606780458253,-29.614180233333432,-28.82075272,-28.334252185,-26.69432742648509,-26.41534254225164,-26.24989034548828,-25.366248230505143,-24.47372692890717,-23.843717998965808,-23.843717998965808,-19.891019437961464,-18.2195779890145,-7.683832373521538,22.35348579667918,71.41319629080058,141.14643150852783,143.08782540653235,143.23155021356877,144.51849999026402,152.03265239504762,157.60009463623766,163.43384230064845,170.16121157910763,171.63863448828272,175.38028058919596,175.90781125587375,178.5274215441001,178.93376652365748,179.49705383487134,179.77433690745875,187.9528237135997,188.86929226855244,192.71968633350696,193.04026087688493,195.89968229183893,200.4101620147963,201.08516039915088,203.277595339258,204.0393087292352,204.18050898987823,205.1475577794168,205.7793729374808,210.01468356079323],"trunk_tilt_sd_deg":[0.4285603291167049,0.5777226750349691,0.5844033738684946,0.5853287796630424,0.6136344926771451,0.617019187717709,0.665109420962743,0.665109420962743,0.6725736313115399,0.752974108211983,0.7858495317755488,0.8073360020437763,0.8121557585898159,0.8298062297138401,0.8492044669495774,0.8639471391748828,0.8651491542964547,0.8839649348266487,0.8855435978121198,0.8986222027945843,0.921669391895498,0.9279138329129276,0.9391207810562384,0.9515200144360876,0.9562626913764144,0.966232785143537,0.969548559337104,0.9726916329361232,0.9769348124998116,0.997009310859787,1.0136649599472085,1.0207164550269414,1.025206546094506,1.0338293817482045,1.0437922151624563,1.0449103647856313,1.0465754884582603,1.0505099989169964,1.061651622477159,1.064431632986537,1.0647963029371963,1.07778217027983,1.091224164503355,1.1003100714950165,1.1128665330660783,1.1182595187351057,1.119589955580993,1.128267915216738,1.130764009945819,1.1342459728315275,1.1384194654602446,1.147418306054264,1.152826002037222,1.1602744577738748,1.1605957070206143,1.1674573754037532,1.1676293080354,1.1680200876445792,1.1732235045668002,1.1808261714110524,1.182100110544584,1.1827065386629296,1.210174446656238,1.212718603100039,1.216146928409077,1.2181971710197832,1.2190486492383923,1.2228246171465984,1.2268268669338034,1.2333008887278554,1.2382123876685138,1.238424046458627,1.2415883303154631,1.249862315989585,1.26259950534357,1.2653373077134555,1.2737188304091362,1.2850747112603942,1.290722916914594,1.2940054766598308,1.2953363379403793,1.2982583508663754,1.3217083282410609,1.3316348602327062,1.33617781331192,1.338199178761421,1.3407346390188974,1.3463923974630037,1.348396463853983,1.3494940916561584,1.3503357934345803,1.354203108162219,1.355824185749832,1.3595699854384842,1.361363162557477,1.3619592128555449,1.3638343290311363,1.363953489054049,1.3877219454405478,1.3894155786588374,1.3900336765657464,1.3934714951391671,1.399109913134606,1.4002321746193969,1.4102105964358926,1.4161839272742216,1.4267812853789017,1.446359721781998,1.4518574534764477,1.4543708271248657,1.4741819809891583,1.4830935292064649,1.4884807029019418,1.512168551105844,1.513659140894494,1.5161646457388689,1.5172899435701814,1.5374271577062837,1.5437247461610553,1.5441228747105835,1.566496930445628,1.5768456378615707,1.5862737597612138,1.58713214225034,1.5876588254223991,1.604138562719595,1.6104546027890323,1.6350912726790965,1.647851035560366,1.6545869797790511,1.6569672840709997,1.659687192955323,1.6661687158392762,1.6686782016214274,1.680206165444152,1.6957619673395743,1.7079868039164134,1.7258589543805145,1.726825575142476,1.7299443263956429,1.739012921932069,1.7490230489027363,1.7690495590421405,1.775568595139186,1.7778183778415724,1.7800954392692525,1.8172827965510776,1.8185151615224104,1.8217552804064403,1.8348101269284391,1.865266089225564,1.8909010663016248,1.8911445111521488,1.8963390932149569,1.9033561988949408,1.9165416900337893,1.9252786160968511,1.937925936825204,1.953987766730633,1.9824762147986268,2.012493541278416,2.0140135713473186,2.01816419412334,2.0188365943548194,2.021402822607579,2.022075637672639,2.032687647535277,2.095536506275569,2.1021082047395514,2.107087831974415,2.108744802993319,2.168258327114524,2.212624045719633,2.241823607949218,2.268935837363196,2.279582461994617,2.2867729676187163,2.2993488566940696,2.3236559805407087,2.357055460421952,2.4427991669572098,2.4543077049969027,2.464098876185619,2.479706099433672,2.51805604546802,2.5367171576705587,2.5857877896221355,2.629737862192502,2.7421283994671097,2.8198128688084267,2.82343847689956,2.8478466438352545,2.861140174798511,2.9001027869139446,2.9530698649507388,2.958399350059618,3.977748065985295,4.052701821164249,4.2183370981216175,4.3480213051712,4.516884554352332,4.53987626498285,5.104226798802245,5.2924189707393845,5.338057255493177,5.531275688313444,5.769144524148513,6.449765878892423,6.595521631475958,7.267810323911072,11.502238087076549,11.6838618936509,14.702182288501398,15.754387328694529,16.95758315812405,18.583105764424108,18.62590624809314,20.245789436882863,21.46087372353624,21.63628209853868,21.670342858840087,22.78065360568182],"trunk_to_arm_lag_ms":[-196.24302649930263,-188.2446254291412,-167.02855818139116,-133.65212401169066,-129.37565288600146,-123.19894797789848,-79.495754787843,-50.1030295508206,-43.90534579897897,-41.80978745928394,-41.767881241565455,-33.411706646864815,-27.118564199873497,-25.09765177366371,-20.87394309950701,-20.86743568232662,-18.79484776925632,-16.703761027704687,-12.531938805884504,-10.451240231056744,-10.44019944433257,-6.266397578203835,-4.180788164262201,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,2.085452695829095,2.0866733466933867,2.087203302373581,2.0875802189505475,2.08994708994709,4.173809523809523,6.261541194207627,8.350476190476192,8.353522732918481,8.363412313255303,10.442967903965346,12.53567904760668,12.537822727643714,12.565775069858557,14.60399695490526,14.607491019400136,14.621745558942532,14.623735636576727,14.631407136625496,14.63312852669861,14.633498443696578,16.692603259641185,16.697561408453645,16.700744169454886,16.702169625246544,16.70783364962029,16.72503840245776,18.78805560765192,20.87561666769588,20.885286605146163,20.89493735016358,20.902267161054635,25.040358744394624,25.049950267896527,25.05142053044337,25.054794520547947,25.055079559363524,25.068611690418265,25.072052883060067,25.07302612551817,25.08158508158508,27.14352266486833,27.14896175041753,27.151871818173795,29.226985931205785,29.237409526253167,29.25173408368831,29.25540059085065,29.255523296690576,29.26661835591453,31.323564076373064,31.33372203575012,31.34072041202661,31.36211504461165,33.39531178114164,33.39938348346384,33.40740633198617,33.412814500089,33.41566220971845,33.42216154016232,33.43018378708153,33.433965480353095,33.4424928938102,33.45977222198721,33.46304346304347,33.46361155841833,35.4757303044119,35.49167389627915,35.49243932086959,35.49669377821896,35.51385217087906,37.56999296553111,37.5805261135483,37.59013293874483,37.59382903146008,37.59966423946955,37.60636801773826,37.60798544782021,37.61010934962256,37.6139536347109,37.62166926767239,37.64488692393663,37.66304347826088,39.63317051622176,39.68484007141517,39.68548213517005,39.70305971526106,39.73368884885956,41.74068594935531,41.74281746620712,41.74406604747163,41.75681610798468,41.77165092013912,41.771917813274015,41.77255245181964,41.777352939424816,41.78246379858285,41.785636781022646,41.79368542601683,41.7952660608706,41.796130794574864,43.81734094178599,43.8424693246171,43.84791941018872,43.88528744161904,45.929632514535285,45.96477574910218,45.97192865530484,45.975820379965455,45.99213228540698,45.99245922694091,45.99367151008738,48.0366883110882,48.03848448104844,48.05636445997541,50.07438991722401,50.09203888273656,50.09816081961192,50.104386544805365,50.124904903520296,50.13157201628749,50.13393518710618,50.136942301121806,50.15478910787394,50.1549635980132,50.15821993101095,50.16279108202357,52.18848190207575,52.19227489418444,52.21169591739793,54.27908003590798,54.30628052749461,54.33669656203289,56.36380101455882,56.376867272870896,56.37710378681626,56.3790861882519,56.38500705042304,58.44605748740484,58.4588542043826,60.535671035191285,60.631084563987926,62.63376932223544,62.72102161100197,64.71499272351925,64.74021860044525,66.86546582816385,66.87065999929071,68.94512544712651,68.97805222629637,71.08914455005711,75.15735565972633,75.23861146349901,79.40839694656488,83.58690640366603,85.71073524630836,87.63865705540417,91.8908927921611,91.93667103512068,152.55742058715788,626.7335118106207],"wrist_3d_sd_cm":[3.719868390642079,4.117640349310968,4.505008155013164,4.546909421387711,4.603757447253657,4.663599835138872,4.716751561029613,4.75861419429224,4.815750434264582,5.035636483047192,5.082000891458575,5.20888135200966,5.365938619317803,5.394506821007773,5.407253978656441,5.424978103292817,5.471637834344997,5.604191635917174,5.6091631152427,5.625999994151339,5.628329895713331,5.802257433091569,5.861665813764168,5.929540302007464,5.950010612273945,5.960918532480957,5.967291105340908,5.967291105340908,6.004447458639629,6.1010143901087455,6.1758190252397975,6.180716859909183,6.258950829651938,6.290781953464555,6.2993569949581065,6.368633167610264,6.379633569291933,6.414518963481326,6.4152708623947134,6.508538116316733,6.514084552176774,6.629930830213782,6.658742432189327,6.686543745377467,6.694647659787754,6.710207250714328,6.718803100581683,6.784567588399974,6.85293919445914,6.969145326032386,6.973042411685848,6.981717534553157,7.052970217344432,7.14952776245388,7.171007295057582,7.203065660738872,7.242072826181935,7.258147757085689,7.259492260368552,7.312577959482472,7.361597754601817,7.4920566061204035,7.5013055562429,7.54473168448232,7.6533841333167025,7.702539715097151,7.787147382131445,7.852641332534844,8.064173606093872,8.068280535630135,8.07768093312567,8.122222851249168,8.159784026740354,8.18880917473423,8.197807625309698,8.539264693970742,8.595944676855162,8.730175942384635,8.809630605740335,8.862284107592039,8.86477961106235,8.906046490495974,9.006407006643466,9.00864196717666,9.019668632135238,9.061770641318606,9.06399123454913,9.0949888343523,9.135405384901976,9.142279582034131,9.14438127381136,9.174537178903302,9.181069341244829,9.199797925899608,9.282047273692676,9.294043362758607,9.339758253739657,9.360878987596886,9.53012044783907,9.592255848291,9.625826162053295,9.70341096130096,9.854201337517434,9.883132617612924,9.89526942398214,10.145006277134923,10.16676268118645,10.19958080396768,10.343484609347962,10.386106651952,10.492852680370111,10.569627115427188,10.57823900129858,10.66588178764451,10.758755176559,10.782043689395206,10.847094894635486,10.887546123015497,10.922427216982689,11.03016527795163,11.095386281037827,11.111101002425414,11.130135863226927,11.141415185315426,11.378500223297006,11.442054683127871,11.51570362499627,11.630684529233308,11.634545066301625,11.636879753152233,11.682747317212517,11.767726572250476,11.78277844543404,12.077634073269174,12.201534385211655,12.252095305340877,12.381540440970664,12.384811717360291,12.451213013504834,12.471504313625806,12.61740948280026,12.76340176984268,12.813732892241315,12.940993227955996,12.959804012193125,13.047684640946471,13.126820597272843,13.191478259001707,13.316906345402336,13.329186652865028,13.388675455441726,13.710901368903627,13.835026761301714,13.85956139825669,14.06417702260851,14.16892338067002,14.32266757935293,14.337685538904024,14.779762271638685,14.782247089226956,14.964580862325882,15.316846183818653,15.432120252068165,15.484761495757413,15.569892651707365,15.622256932305069,15.72055589508875,15.79169686498364,16.166267890643066,16.276866000574504,16.627042767913476,17.074431327975773,17.345692336001996,17.53048461254271,17.54673779218769,17.57268068808163,17.7600468550641,18.08726489249544,18.1730522888382,18.435394664636195,18.85678043263878,18.931808869637205,19.253026413186124,19.3006848714665,19.398397054053543,19.58454609898412,19.602824038239618,19.63064344563724,19.677928187635075,20.297952952768675,20.662746673145723,20.896533705061582,21.43226396472806,21.75642544135778,23.02113133322426,23.6476568703894,24.872715405267947,25.36101247108573,25.37227045966006,27.47204501748709,27.98681199274686,28.49674232305795,28.54802003880331,28.666961398828896,29.98962550645571,30.20062411192981,31.44375334334121,31.82428697469712,36.49307227498716,40.09325009056825,41.3475771055903,44.918027162145975,45.23384236772159,47.10919713677122,48.095648162973646,48.84087697752722,56.098674073327714,56.3888548771719,58.68435558084333,59.14916702008641,59.554485026268544,61.32945364171457,63.45023531267097,64.72792615691718,68.11231030149186,71.9744693464959,73.107099331354,73.34903546035096,75.6958727706004,76.557818697762,80.21053894060547,84.44564389554607,108.51939870794718,108.52239675086057]},"regression":{"fitness_to_velocity":{"slope":0.17027518183093426,"intercept":117.81020101164867,"r2":0.1660953125047384,"n":234},"mechanics_to_velocity":{"slope":0.288184060792835,"intercept":111.46531065300577,"r2":0.23487308442385346,"n":194}},"fitness_cats":["F1_Strength","F2_Power","F3_Reactivity","F4_Body","F5_LowerBody","F6_VelocityIndex"],"mechanics_cats":["C1_Foundation","C2_HipDrive","C3_TrunkPower","C4_LeadLegBlock","C5_Sequencing","C6_ArmCocking"],"control_cats":["P1_ReleaseConsistency","P2_ArmSlot","P3_ReleaseHeight","P4_TimingConsistency","P5_StrideConsistency","P6_TrunkConsistency"],"age_group_adjustment":{"중학":{"velo_offset":-5,"score_offset":-10,"desc":"고교 코호트 상위 50%에 견줄 만함"},"고교":{"velo_offset":0,"score_offset":0,"desc":"BBL 134명 고교 1년 코호트 기준 (변경 없음)"},"대학":{"velo_offset":5,"score_offset":10,"desc":"고교 상위 10% 대비 +5 km/h, +10점"},"프로":{"velo_offset":10,"score_offset":20,"desc":"대학 +5 km/h, 체력·메카닉 +10점"}},"raw_score_lookup_extra":{},"category_offsets":{"F1_Strength":-0.46239054562820314,"F2_Power":-0.23939759573226146,"F3_Reactivity":-2.154262943512787,"F4_Body":-5.309870401081015,"F5_LowerBody":-0.38629538406295627,"F6_VelocityIndex":-0.7337617922513953,"C1_Foundation":0.4836615913054808,"C2_HipDrive":-0.7789747707610216,"C3_TrunkPower":0.18910144809227863,"C4_LeadLegBlock":0.6949926362297495,"C5_Sequencing":-3.2869959764458025,"C6_ArmCocking":0.35680126414350777,"P1_ReleaseConsistency":1.869349879069708e-16,"P2_ArmSlot":-0.21550149755277961,"P3_ReleaseHeight":-0.2155014975527795,"P4_TimingConsistency":-22.401198042223683,"P5_StrideConsistency":-0.2183242442982704,"P6_TrunkConsistency":2.1054229430954545e-16},"var_polarity":{"stride_norm_height":"higher","trunk_rotation_at_fc":"absolute","hip_shoulder_sep_at_fc":"higher","trunk_forward_tilt_at_fc":"lower","max_pelvis_rot_vel_dps":"higher","hip_ir_vel_max_drive":"higher","max_cog_velo":"higher","max_trunk_twist_vel_dps":"higher","trunk_flex_vel_max":"higher","peak_x_factor":"higher","lead_knee_ext_vel_max":"higher","lead_knee_ext_change_fc_to_br":"higher","com_decel_pct":"higher","lead_knee_amortization_ms":"lower","pelvis_to_trunk_lag_ms":"higher","trunk_to_arm_lag_ms":"higher","proper_sequence":"higher","max_shoulder_ER_deg":"higher","shoulder_h_abd_at_fc":"higher","IMTP Peak Vertical Force [N]":"higher","Grip Strength":"higher","CMJ Peak Power [W]":"higher","SJ Peak Power [W]":"higher","CMJ Jump Height (Flight Time) [cm]":"higher","SJ Jump Height (Flight Time) [cm]":"higher","CMJ RSI-modified [m/s]":"higher","SJ RSI-modified [m/s]":"higher","EUR":"higher","Height[M]":"higher","Weight[KG]":"higher","BMI":"higher","CMJ Peak Power / BM [W/kg]":"higher","SJ Peak Power / BM [W/kg]":"higher","IMTP Peak Vertical Force / BM [N/kg]":"higher","CMJ Concentric Impulse [N s]":"higher","wrist_3d_sd_cm":"lower","arm_slot_sd_deg":"lower","arm_slot_mean_deg":"higher","release_height_sd_cm":"lower","release_height_m":"higher","mer_to_br_sd_ms":"lower","proper_sequence_pct":"higher","stride_sd_cm":"lower","stride_mean_m":"higher","trunk_tilt_sd_deg":"lower"},"binary_vars":["proper_sequence"]};
+
+let CURRENT_AGE = '고교';
+let CURRENT_INPUT = { fitness: {}, mechanics: {} };
+
+// ════════════════════════════════════════════════════════════════════
+// 유틸리티
+// ════════════════════════════════════════════════════════════════════
+function scoreColor(score) {
+  if (score == null) return 'var(--text-muted)';
+  if (score >= 75) return '#4ade80';
+  if (score >= 50) return '#60a5fa';
+  if (score >= 25) return '#fbbf24';
+  return '#f87171';
+}
+
+function scoreToWord(s) {
+  if (s == null) return '—';
+  if (s >= 75) return '매우 우수';
+  if (s >= 60) return '양호';
+  if (s >= 40) return '평균적';
+  if (s >= 25) return '부족';
+  return '심각하게 부족';
+}
+
+// 백분위 계산: raw 값 → 코호트 안에서 N백분위
+function percentileOfCohort(varKey, value, polarity) {
+  if (value == null || isNaN(value)) return null;
+  
+  // proper_sequence는 binary 변수 — raw × 100
+  if (COHORT.binary_vars && COHORT.binary_vars.includes(varKey)) {
+    return Math.max(0, Math.min(100, value * 100));
+  }
+  
+  const sorted = COHORT.var_sorted_lookup[varKey];
+  if (!sorted || sorted.length < 30) return null;
+  
+  if (polarity === 'absolute') {
+    // 절대값 기준 (좌투/우투 혼재 대응)
+    const absSorted = sorted.map(v => Math.abs(v)).sort((a,b) => a-b);
+    const absVal = Math.abs(value);
+    let rank = 0;
+    for (let i = 0; i < absSorted.length; i++) {
+      if (absSorted[i] <= absVal) rank++;
+      else break;
+    }
+    return Math.round(100 * rank / absSorted.length);
+  }
+  
+  let rank = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i] <= value) rank++;
+    else break;
+  }
+  let pct = Math.round(100 * rank / sorted.length);
+  
+  // polarity가 'lower'면 점수 반전 (작을수록 좋음)
+  if (polarity === 'lower') pct = 100 - pct;
+  
+  return pct;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 폼 렌더링
+// ════════════════════════════════════════════════════════════════════
+function renderInputs() {
+  // 모든 입력 폼은 CSV 전용 UI로 대체됨. 코호트 정보 헤더만 갱신.
+  document.getElementById('cohort-info').textContent =
+    `코호트: ${COHORT.meta.cohort_n_players}명 / ${COHORT.meta.cohort_size}회 측정 · 18 카테고리 / ${Object.keys(COHORT.var_distributions).length} 변수`;
+}
+
+function selectAge(age) {
+  CURRENT_AGE = age;
+  document.querySelectorAll('.age-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.age === age);
+  });
+  const adj = COHORT.age_group_adjustment[age];
+  document.getElementById('age-desc').textContent = `${age}: ${adj.desc}`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CSV 업로드 / 다운로드
+// ════════════════════════════════════════════════════════════════════
+function downloadTemplate(type) {
+  let csv = 'field_key,field_name,unit,polarity,value\n';
+  let cats;
+  if (type === 'fitness') cats = [...COHORT.fitness_cats, ...COHORT.control_cats];
+  else cats = COHORT.mechanics_cats;
+  
+  const seen = new Set();
+  for (const catId of cats) {
+    for (const v of (COHORT.category_vars[catId] || [])) {
+      const [key, name, unit, dec, polarity] = v;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const inCohort = COHORT.var_distributions[key] ? '' : ' (★Phase2-점수산출불가)';
+      csv += `${key},"${name}${inCohort}",${unit || ''},${polarity || 'higher'},\n`;
+    }
+  }
+  
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `BBL_${type}_template.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── CSV 파싱 유틸 ─────────────────────────────────────────────────
+// 따옴표 안의 콤마를 보존하는 안전한 한 줄 파서
+function parseCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQ = false; }
+      else cur += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map(s => s.trim());
+}
+
+// 컬럼명 정규화: 소문자 + 모든 공백 제거 (브래킷·괄호는 유지하면 코호트 키와 더 잘 매칭됨)
+function normalizeColName(s) {
+  return (s || '').toLowerCase().replace(/\s+/g, '');
+}
+
+// 와이드 CSV 컬럼명 → 코호트 변수 키 alias (정규화된 키 기준)
+const FITNESS_KEY_ALIASES = {
+  'bw[kg]':       'Weight[KG]',
+  'bw':           'Weight[KG]',
+  'weight':       'Weight[KG]',
+  'weight[kg]':   'Weight[KG]',
+  'bodyweight':   'Weight[KG]',
+  'height':       'Height[M]',
+  'height[m]':    'Height[M]',
+  'bodyheight':   'Height[M]',
+};
+
+// 메타 컬럼: Step 1 입력 필드로 자동 채움
+const META_COL_MAP = {
+  'name':          'name',
+  'playername':    'name',
+  'date':          'date',
+  'measurementdate': 'date',
+  'maxvelocity':   'velocity',
+  'maxvelo':       'velocity',
+  'velocity':      'velocity',
+  'topvelocity':   'velocity',
+};
+
+// 코호트 변수 키 정규화 → 원본 키 lookup (alias 적용) — type별 캐시
+const _COHORT_KEY_LOOKUP = { fitness: null, mechanics: null };
+function getCohortKeyLookup(type) {
+  if (_COHORT_KEY_LOOKUP[type]) return _COHORT_KEY_LOOKUP[type];
+  const lookup = {};
+  let cats;
+  if (type === 'fitness') cats = [...COHORT.fitness_cats, ...COHORT.control_cats];
+  else cats = COHORT.mechanics_cats;
+  for (const cat of cats) {
+    for (const v of (COHORT.category_vars[cat] || [])) {
+      lookup[normalizeColName(v[0])] = v[0];
+    }
+  }
+  if (type === 'fitness') Object.assign(lookup, FITNESS_KEY_ALIASES);
+  _COHORT_KEY_LOOKUP[type] = lookup;
+  return lookup;
+}
+
+// 날짜 유연 파싱: YYYY-MM-DD / YYYY/MM/DD / DD/MM/YYYY / DD-MM-YYYY
+function parseDateFlex(s) {
+  if (!s) return '';
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return s;
+}
+
+// ── CSV 업로드 (자동 포맷 감지) ─────────────────────────────────
+const WIDE_CSV_CACHE = { fitness: null, mechanics: null };
+
+function handleCsvUpload(event, type) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = () => alert('파일을 읽지 못했습니다. 다른 파일로 다시 시도해주세요.');
+  reader.onload = (e) => {
+    try {
+      let text = e.target.result;
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { alert('CSV가 비어 있습니다.'); return; }
+
+      const header = parseCsvLine(lines[0]);
+      const headerNorm = header.map(h => normalizeColName(h));
+
+      const isLongFormat =
+        headerNorm.some(h => h === 'field_key' || h === 'fieldkey' || h === 'key') &&
+        headerNorm.some(h => h === 'value');
+
+      // Uplift Capture raw 시계열 CSV — athlete_name/frame/fps 컬럼이 모두 있을 때
+      const isUpliftFormat =
+        headerNorm.includes('athlete_name') &&
+        headerNorm.includes('frame') &&
+        headerNorm.includes('fps');
+
+      if (isUpliftFormat) processUpliftCsv(header, headerNorm, lines, type);
+      else if (isLongFormat) processLongCsv(header, headerNorm, lines, type);
+      else processWideCsv(header, headerNorm, lines, type);
+    } catch (err) {
+      console.error('CSV 처리 오류:', err);
+      alert('CSV 처리 중 오류가 발생했습니다:\n' + (err && err.message ? err.message : err)
+            + '\n\n브라우저 개발자 콘솔(F12)에 자세한 내용이 출력됩니다.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── Uplift Capture raw CSV 처리 ─────────────────────────────────
+// 이벤트 프레임 + 요약 메트릭 + FC 시점 시계열 추출 → BBL 메카닉 변수
+function processUpliftCsv(header, headerNorm, lines, type) {
+  if (type !== 'mechanics') {
+    alert('Uplift Capture CSV는 메카닉(Step 3) 영역에 업로드해주세요.\n현재 영역(체력+구속)에는 다른 형식의 CSV가 필요합니다.');
+    return;
+  }
+
+  // 헤더 인덱스 (raw 컬럼명 그대로 lookup)
+  const idx = {};
+  header.forEach((h, i) => { idx[h] = i; });
+
+  // 필수 컬럼 사전 검증
+  const requiredCols = ['athlete_name', 'frame', 'fps', 'foot_contact_frame', 'ball_release_frame'];
+  const missing = requiredCols.filter(c => idx[c] == null);
+  if (missing.length) {
+    alert('Uplift CSV의 필수 컬럼이 빠져 있습니다:\n  ' + missing.join(', ')
+          + '\n\nUplift Capture에서 정상 export된 CSV인지 확인해주세요.');
+    return;
+  }
+
+  // 데이터 행 파싱 (성능: 너무 큰 파일 경고)
+  if (lines.length > 50000) {
+    if (!confirm(`CSV가 매우 큽니다 (${lines.length.toLocaleString()} 행). 처리에 시간이 걸릴 수 있습니다. 계속할까요?`)) return;
+  }
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    if (cols.length < 5) continue;
+    rows.push(cols);
+  }
+  if (rows.length === 0) { alert('Uplift CSV에 데이터 행이 없습니다.'); return; }
+
+  const r0 = rows[0];
+
+  // 메타데이터 (모든 행에 동일)
+  const athleteName  = r0[idx['athlete_name']] || '';
+  const captureDate  = r0[idx['capture_datetime']] || '';
+  const fps          = parseFloat(r0[idx['fps']]) || 240;
+  const handedness   = (r0[idx['handedness']] || '').toLowerCase();
+  const kinSeq       = r0[idx['kinematic_sequence_order']] || '';
+
+  // 이벤트 프레임 (절대 frame index = current_frame - event_relative_value)
+  const cur0 = parseFloat(r0[idx['frame']]) || 0;
+  const getFrameAbs = (key) => {
+    const ci = idx[key];
+    if (ci == null) return null;
+    const v = parseFloat(r0[ci]);
+    if (isNaN(v)) return null;
+    return cur0 - v;
+  };
+  // peak_*_angular_velocity_frame이 비어있을 수 있어 max_*_rotational_velocity_with_respect_to_ground_frame을 fallback
+  const armSide = handedness === 'left' ? 'left' : 'right';
+  const events = {
+    fc:   getFrameAbs('foot_contact_frame'),
+    br:   getFrameAbs('ball_release_frame'),
+    mer:  getFrameAbs('max_external_rotation_frame'),
+    mir:  getFrameAbs('max_internal_rotation_frame'),
+    kh:   getFrameAbs('max_knee_raise_frame'),
+    peakPelvis: getFrameAbs('peak_pelvis_angular_velocity_frame')
+                ?? getFrameAbs('max_pelvis_rotational_velocity_with_respect_to_ground_frame'),
+    peakTrunk:  getFrameAbs('peak_trunk_angular_velocity_frame')
+                ?? getFrameAbs('max_trunk_rotational_velocity_with_respect_to_ground_frame'),
+    peakArm:    getFrameAbs('peak_arm_angular_velocity_frame')
+                ?? getFrameAbs(`max_${armSide}_arm_rotational_velocity_with_respect_to_ground_frame`),
+    maxXFactor: getFrameAbs('max_x_factor_frame'),
+  };
+
+  // frame → row index lookup
+  const frameMap = {};
+  rows.forEach((r, i) => {
+    const f = parseInt(r[idx['frame']], 10);
+    if (!isNaN(f)) frameMap[f] = i;
+  });
+
+  const valAtFrame = (frameAbs, colName) => {
+    if (frameAbs == null) return null;
+    const ci = idx[colName];
+    if (ci == null) return null;
+    const ri = frameMap[frameAbs];
+    if (ri == null) return null;
+    const v = parseFloat(rows[ri][ci]);
+    return isNaN(v) ? null : v;
+  };
+  const colMaxBetween = (colName, fromF, toF) => {
+    const ci = idx[colName];
+    if (ci == null || fromF == null || toF == null) return null;
+    let max = null;
+    const lo = Math.min(fromF, toF), hi = Math.max(fromF, toF);
+    for (let f = lo; f <= hi; f++) {
+      const ri = frameMap[f];
+      if (ri == null) continue;
+      const v = parseFloat(rows[ri][ci]);
+      if (!isNaN(v) && (max == null || v > max)) max = v;
+    }
+    return max;
+  };
+
+  // ── BBL 메카닉 변수 추출 ──
+  const loaded = {};
+  const setVal = (bblKey, val) => {
+    if (val != null && !isNaN(val)) loaded[bblKey] = val;
+  };
+
+  // 1) 직접 매핑 (Uplift 요약 메트릭 → BBL 키)
+  setVal('max_pelvis_rot_vel_dps',  parseFloat(r0[idx['peak_pelvis_angular_velocity']]));
+  setVal('max_trunk_twist_vel_dps', parseFloat(r0[idx['peak_trunk_angular_velocity']]));
+  setVal('max_shoulder_ER_deg',     parseFloat(r0[idx['max_layback_angle']]));
+  setVal('peak_x_factor',           parseFloat(r0[idx['max_x_factor']]));
+
+  // 2) proper_sequence (binary 0/1)
+  if (kinSeq) {
+    loaded['proper_sequence'] = kinSeq.toLowerCase().includes('pelvis-trunk-arm') ? 1 : 0;
+  }
+
+  // 3) 시퀀스 lag (peak frame 차이 → ms)
+  if (events.peakPelvis != null && events.peakTrunk != null) {
+    setVal('pelvis_to_trunk_lag_ms', (events.peakTrunk - events.peakPelvis) / fps * 1000);
+  }
+  if (events.peakTrunk != null && events.peakArm != null) {
+    setVal('trunk_to_arm_lag_ms', (events.peakArm - events.peakTrunk) / fps * 1000);
+  }
+
+  // 4) FC 시점 시계열 추출
+  if (events.fc != null) {
+    const trunkRot  = valAtFrame(events.fc, 'trunk_global_rotation');
+    const pelvisRot = valAtFrame(events.fc, 'pelvis_global_rotation');
+    const trunkFwd  = valAtFrame(events.fc, 'trunk_global_flexion');
+    setVal('trunk_rotation_at_fc', trunkRot);
+    if (trunkRot != null && pelvisRot != null) {
+      setVal('hip_shoulder_sep_at_fc', Math.abs(trunkRot - pelvisRot));
+    }
+    setVal('trunk_forward_tilt_at_fc', trunkFwd);
+
+    const sideHabd = armSide === 'left'
+      ? 'left_shoulder_horizontal_adduction'
+      : 'right_shoulder_horizontal_adduction';
+    setVal('shoulder_h_abd_at_fc', valAtFrame(events.fc, sideHabd));
+  }
+
+  // 5) 앞다리 무릎 신전속도 max [FC, BR]  (우투면 lead = left)
+  if (events.fc != null && events.br != null) {
+    const leadCol = armSide === 'left'
+      ? 'right_knee_extension_velocity'
+      : 'left_knee_extension_velocity';
+    setVal('lead_knee_ext_vel_max', colMaxBetween(leadCol, events.fc, events.br));
+  }
+
+  // 6) 제구 (P 카테고리) — 단일 trial 평균값 매핑
+  //    SD 변수(release point/timing/trunk consistency)는 다중 trial 필요 → 미입력
+  setVal('arm_slot_mean_deg', parseFloat(r0[idx['arm_slot_angle']]));
+  setVal('release_height_m',   parseFloat(r0[idx['wrist_height_at_release']]));
+  setVal('stride_mean_m',      parseFloat(r0[idx['stride_length']]));
+  // proper_sequence_pct: 단일 trial에서는 0/100 (binary × 100)
+  if (kinSeq) {
+    loaded['proper_sequence_pct'] = kinSeq.toLowerCase().includes('pelvis-trunk-arm') ? 100 : 0;
+  }
+
+  // 추출 0개면 경고
+  if (Object.keys(loaded).length === 0) {
+    alert('⚠️ Uplift CSV에서 BBL 메카닉 변수를 하나도 추출하지 못했습니다.\n'
+          + 'CSV에 요약 메트릭(peak_pelvis_angular_velocity 등)과 이벤트 프레임이 들어있는지 확인해주세요.');
+    return;
+  }
+
+  // ── 입력 적용 + Step 1 자동 채움 ──
+  CURRENT_INPUT.mechanics = {};
+  for (const [k, v] of Object.entries(loaded)) CURRENT_INPUT.mechanics[k] = v;
+
+  const dateIso = parseDateFlex((captureDate || '').split(' ')[0]);
+  const metaApplied = {};
+  if (athleteName) {
+    const el = document.getElementById('player-name');
+    // fitness가 먼저 채웠으면 덮어쓰지 않음
+    if (!el.value || el.value === '신규 선수') { el.value = athleteName; metaApplied.name = athleteName; }
+  }
+  if (dateIso) {
+    const el = document.getElementById('player-date');
+    if (!el.value) { el.value = dateIso; metaApplied.date = dateIso; }
+  }
+
+  // 셀렉터 닫고, 결과 카드 렌더
+  WIDE_CSV_CACHE.mechanics = null;
+  hidePlayerSelector('mechanics');
+
+  const handLabel = armSide === 'left' ? '좌투' : '우투';
+  const eventsLabel = `KH=${events.kh ?? '?'} · FC=${events.fc ?? '?'} · MER=${events.mer ?? '?'} · BR=${events.br ?? '?'}`;
+  renderUploadStatus('mechanics', {
+    meta: metaApplied,
+    loaded,
+    ignored: [],
+    sourceLabel: `Uplift Capture raw 시계열 (${rows.length} 프레임 · ${fps.toFixed(1)} fps · ${handLabel})<br>· 이벤트 프레임: <span class="mono text-[11px]">${eventsLabel}</span>`,
+  });
+}
+
+// ── 롱 포맷: 한 변수 한 행 ────────────────────────────────────
+function processLongCsv(header, headerNorm, lines, type) {
+  const keyIdx = headerNorm.findIndex(h => h === 'field_key' || h === 'fieldkey' || h === 'key');
+  const valIdx = headerNorm.findIndex(h => h === 'value');
+
+  const lookup = getCohortKeyLookup(type);
+  const loaded = {};
+  const ignored = [];
+
+  CURRENT_INPUT[type] = {};
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const rawKey = cols[keyIdx];
+    const val = parseFloat(cols[valIdx]);
+    if (!rawKey || isNaN(val)) continue;
+    const cohortKey = lookup[normalizeColName(rawKey)]
+      || (COHORT.var_distributions[rawKey] ? rawKey : null);
+    if (cohortKey) {
+      CURRENT_INPUT[type][cohortKey] = val;
+      loaded[cohortKey] = val;
+    } else {
+      ignored.push(rawKey);
+    }
+  }
+
+  WIDE_CSV_CACHE[type] = null;
+  hidePlayerSelector(type);
+  renderUploadStatus(type, { meta: {}, loaded, ignored, sourceLabel: 'BBL 템플릿 (롱 포맷)' });
+}
+
+// ── 와이드 포맷: 한 행 = 한 선수 ────────────────────────────────
+function processWideCsv(header, headerNorm, lines, type) {
+  const lookup = getCohortKeyLookup(type);
+  const colMap = [];
+  const metaMap = [];
+  const ignored = [];
+
+  for (let i = 0; i < header.length; i++) {
+    const norm = headerNorm[i];
+    if (META_COL_MAP[norm]) { metaMap.push({ idx: i, metaKey: META_COL_MAP[norm] }); continue; }
+    if (lookup[norm]) colMap.push({ idx: i, cohortKey: lookup[norm] });
+    else if (header[i]) ignored.push(header[i]);
+  }
+
+  if (colMap.length === 0) {
+    alert('⚠️ 매칭되는 변수 컬럼을 찾지 못했습니다. CSV 헤더를 확인해주세요.');
+    return;
+  }
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    if (cols.every(c => !c)) continue;
+    rows.push(cols);
+  }
+  if (rows.length === 0) { alert('CSV에 데이터 행이 없습니다.'); return; }
+
+  WIDE_CSV_CACHE[type] = { header, headerNorm, rows, colMap, metaMap, ignored };
+
+  if (rows.length === 1) {
+    hidePlayerSelector(type);
+  } else {
+    const selId    = type === 'fitness' ? 'fitness-player-select'    : 'mech-player-select';
+    const wrapId   = type === 'fitness' ? 'fitness-player-selector'  : 'mech-player-selector';
+    const sel = document.getElementById(selId);
+    sel.innerHTML = rows.map((r, i) => {
+      const nameMeta = metaMap.find(m => m.metaKey === 'name');
+      const dateMeta = metaMap.find(m => m.metaKey === 'date');
+      const nm = nameMeta ? (r[nameMeta.idx] || `Row ${i+1}`) : `Row ${i+1}`;
+      const dt = dateMeta ? r[dateMeta.idx] : '';
+      return `<option value="${i}">${nm}${dt ? ' · ' + dt : ''}</option>`;
+    }).join('');
+    sel.value = '0';
+    document.getElementById(wrapId).classList.remove('hidden');
+  }
+  applyRow(type, 0);
+}
+
+function hidePlayerSelector(type) {
+  const wrapId = type === 'fitness' ? 'fitness-player-selector' : 'mech-player-selector';
+  const el = document.getElementById(wrapId);
+  if (el) el.classList.add('hidden');
+}
+
+// 와이드 한 행 적용 (변수 + 메타 + 요약)
+function applyRow(type, rowIdx) {
+  const cache = WIDE_CSV_CACHE[type];
+  if (!cache) return;
+  const { rows, colMap, metaMap, ignored } = cache;
+  if (rowIdx < 0 || rowIdx >= rows.length) return;
+  const row = rows[rowIdx];
+
+  // 1) 변수 적용 (해당 type만 초기화 후 채우기)
+  CURRENT_INPUT[type] = {};
+  const loaded = {};
+  for (const { idx, cohortKey } of colMap) {
+    const v = parseFloat(row[idx]);
+    if (!isNaN(v)) {
+      CURRENT_INPUT[type][cohortKey] = v;
+      loaded[cohortKey] = v;
+    }
+  }
+
+  // 2) 메타 → Step 1 자동 입력
+  // fitness CSV는 항상 덮어쓰고, mechanics CSV는 비어있는 경우에만 채움 (fitness가 우선)
+  const overwrite = (type === 'fitness');
+  const metaApplied = {};
+  for (const { idx, metaKey } of metaMap) {
+    const raw = row[idx];
+    if (!raw) continue;
+    if (metaKey === 'name') {
+      const el = document.getElementById('player-name');
+      if (overwrite || !el.value || el.value === '신규 선수') { el.value = raw; metaApplied.name = raw; }
+    } else if (metaKey === 'date') {
+      const el = document.getElementById('player-date');
+      const iso = parseDateFlex(raw);
+      if (overwrite || !el.value) { el.value = iso; metaApplied.date = iso; }
+    } else if (metaKey === 'velocity') {
+      const el = document.getElementById('player-velo');
+      const v = parseFloat(raw);
+      if (!isNaN(v) && (overwrite || !el.value)) { el.value = v; metaApplied.velocity = v; }
+    }
+  }
+
+  const sourceLabel = rows.length > 1
+    ? `와이드 포맷 (${rows.length}명 중 ${rowIdx+1}번째)`
+    : '와이드 포맷';
+  renderUploadStatus(type, { meta: metaApplied, loaded, ignored, sourceLabel });
+}
+
+// 셀렉터 onchange
+function selectPlayerFromCsv(rowIdx) { applyRow('fitness', parseInt(rowIdx, 10)); }
+function selectMechanicsPlayerFromCsv(rowIdx) { applyRow('mechanics', parseInt(rowIdx, 10)); }
+
+// 업로드 결과 카드 렌더 (type별)
+function renderUploadStatus(type, { meta, loaded, ignored, sourceLabel }) {
+  const ids = type === 'fitness'
+    ? { empty: 'fitness-empty-state', status: 'fitness-upload-status', summary: 'fitness-upload-summary', table: 'fitness-loaded-table' }
+    : { empty: 'mech-empty-state',    status: 'mech-upload-status',    summary: 'mech-upload-summary',    table: 'mech-loaded-table' };
+
+  document.getElementById(ids.empty).classList.add('hidden');
+  document.getElementById(ids.status).classList.remove('hidden');
+  const summary = document.getElementById(ids.summary);
+  const tableDiv = document.getElementById(ids.table);
+
+  // 메타 (이름·날짜·구속) 표시
+  const metaBits = [];
+  if (meta.name)             metaBits.push(`<strong>${meta.name}</strong>`);
+  if (meta.date)             metaBits.push(meta.date);
+  if (meta.velocity != null) metaBits.push(`측정 ${meta.velocity} km/h`);
+
+  // type별 카운트
+  let countLine = '';
+  let cats = [];
+  if (type === 'fitness') {
+    const fitC = COHORT.fitness_cats.reduce((a,c) => a + (COHORT.category_vars[c]||[]).filter(v => loaded[v[0]]!=null).length, 0);
+    const ctrlC = COHORT.control_cats.reduce((a,c) => a + (COHORT.category_vars[c]||[]).filter(v => loaded[v[0]]!=null).length, 0);
+    countLine = `· 체력 변수 <strong>${fitC}개</strong>${ctrlC ? `, 제구 변수 <strong>${ctrlC}개</strong>` : ''} 적용`;
+    cats = [...COHORT.fitness_cats, ...COHORT.control_cats];
+  } else {
+    const mC = COHORT.mechanics_cats.reduce((a,c) => a + (COHORT.category_vars[c]||[]).filter(v => loaded[v[0]]!=null).length, 0);
+    const pC = COHORT.control_cats.reduce((a,c) => a + (COHORT.category_vars[c]||[]).filter(v => loaded[v[0]]!=null).length, 0);
+    const phase2 = COHORT.mechanics_cats.reduce((a,c) => a + (COHORT.category_vars[c]||[]).filter(v => !COHORT.var_distributions[v[0]]).length, 0);
+    countLine = `· 메카닉 변수 <strong>${mC}개</strong>${pC ? `, 제구 변수 <strong>${pC}개</strong>` : ''} 적용 (Phase 2 변수 ${phase2}개는 자동 제외)`;
+    cats = [...COHORT.mechanics_cats, ...COHORT.control_cats];
+  }
+
+  summary.innerHTML = `
+    ✅ <strong>${sourceLabel}</strong> 로드 완료
+    ${metaBits.length ? `<br>· ${metaBits.join(' · ')}` : ''}
+    <br>${countLine}
+    ${ignored.length ? `<br>· 무시된 컬럼 ${ignored.length}개: <span class="mono text-[11px] text-[var(--text-muted)]">${ignored.slice(0,8).join(', ')}${ignored.length>8?' …':''}</span>` : ''}
+  `;
+
+  let html = '<table class="preview-table"><thead><tr><th>카테고리</th><th>변수</th><th class="text-right">값</th><th>단위</th></tr></thead><tbody>';
+  for (const cat of cats) {
+    const meta2 = COHORT.category_meta[cat] || {};
+    for (const v of (COHORT.category_vars[cat] || [])) {
+      const [key, name, unit, dec] = v;
+      if (loaded[key] == null) continue;
+      const val = loaded[key];
+      const decN = dec != null ? dec : 2;
+      html += `<tr>
+        <td class="text-[var(--text-muted)]">${cat.split('_')[0]} ${meta2.name||''}</td>
+        <td>${name}</td>
+        <td class="text-right mono">${(typeof val === 'number' ? val.toFixed(decN) : val)}</td>
+        <td class="text-[var(--text-muted)]">${unit || ''}</td>
+      </tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  tableDiv.innerHTML = html;
+}
+
+function clearInputs(type) {
+  CURRENT_INPUT[type] = {};
+  WIDE_CSV_CACHE[type] = null;
+  const ids = type === 'fitness'
+    ? { empty: 'fitness-empty-state', status: 'fitness-upload-status', sel: 'fitness-player-selector' }
+    : { empty: 'mech-empty-state',    status: 'mech-upload-status',    sel: 'mech-player-selector' };
+  const sel = document.getElementById(ids.sel);
+  const status = document.getElementById(ids.status);
+  const empty = document.getElementById(ids.empty);
+  if (sel) sel.classList.add('hidden');
+  if (status) status.classList.add('hidden');
+  if (empty) empty.classList.remove('hidden');
+}
+
+// ── 드래그앤드롭 ─────────────────────────────────────────────────
+function setupDropZone(zoneId, type) {
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+  ['dragover', 'dragenter'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'dragend'].forEach(evt => {
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.remove('dragover');
+    });
+  });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer && e.dataTransfer.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      alert('CSV 파일만 지원합니다 (.csv).');
+      return;
+    }
+    handleCsvUpload({ target: { files: [file], value: '' } }, type);
+  });
+}
+
+// 외부 영역에 파일이 떨어져 navigation 되는 것을 방지
+['dragover', 'drop'].forEach(evt => {
+  document.addEventListener(evt, (e) => {
+    if (!e.target.closest || !e.target.closest('.file-drop')) e.preventDefault();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Driveline 5각형 메카닉 매핑 (v29 일치)
+// ════════════════════════════════════════════════════════════════════
+const DRIVELINE_5_ORDER = ['Posture', 'Block', 'Rotation', 'Arm Action', 'CoG'];
+const DRIVELINE_5_LABELS_KO = {
+  'Posture':    'Posture · 자세',
+  'Block':      'Block · 앞다리 블록',
+  'Rotation':   'Rotation · 회전',
+  'Arm Action': 'Arm Action · 팔 동작',
+  'CoG':        'CoG · 무게중심',
+};
+// 각 카테고리 → BBL 메카닉 변수 키 매핑
+// (코호트 분포가 없는 변수는 자동으로 평균에서 제외됨)
+const DRIVELINE_5_CATS = {
+  'Posture':    ['pelvis_rotation_at_fc', 'trunk_rotation_at_fc', 'hip_shoulder_sep_at_fc',
+                 'trunk_forward_tilt_at_fc', 'peak_torso_counter_rot'],
+  'Block':      ['stride_norm_height', 'lead_knee_ext_change_fc_to_br', 'lead_knee_ext_vel_max'],
+  'Rotation':   ['max_pelvis_rot_vel_dps', 'max_trunk_twist_vel_dps'],
+  'Arm Action': ['max_shoulder_ER_deg', 'shoulder_h_abd_at_fc',
+                 'elbow_ext_vel_max', 'shoulder_ir_vel_max', 'scap_load_at_fc'],
+  'CoG':        ['com_decel_pct', 'max_cog_velo'],
+};
+
+// 변수별 백분위 점수에서 Driveline 5 카테고리 점수 산출
+function drivelineFiveCatScores(varScores) {
+  const out = {};
+  for (const cat of DRIVELINE_5_ORDER) {
+    const vals = (DRIVELINE_5_CATS[cat] || [])
+      .map(k => varScores[k])
+      .filter(s => s != null && !isNaN(s));
+    out[cat] = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
+  }
+  return out;
+}
+
+// 메카닉 차트 모드 토글
+let MECH_VIEW_MODE = '6';  // '6' = BBL 6각형, '5' = Driveline 5각형
+function setMechMode(mode) {
+  MECH_VIEW_MODE = mode;
+  document.querySelectorAll('.mech-mode-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById('mech-mode-' + mode);
+  if (activeBtn) activeBtn.classList.add('active');
+  // 메카닉 차트만 다시 그리기 (sec.key === 'Mechanics_Score' 인 것)
+  renderRadarCharts();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 점수 계산 (v29 로직 포팅)
+// ════════════════════════════════════════════════════════════════════
+function calculateScores(input, age, measuredVelo) {
+  const adj = COHORT.age_group_adjustment[age] || {velo_offset:0, score_offset:0};
+  const allVarScores = {};
+  const catScores = {};
+  
+  // 1) 변수별 점수 계산
+  const allCats = [...COHORT.fitness_cats, ...COHORT.mechanics_cats, ...COHORT.control_cats];
+  for (const catId of allCats) {
+    const vars = COHORT.category_vars[catId] || [];
+    const scores = [];
+    for (const v of vars) {
+      const [key, name, unit, dec, polarity] = v;
+      const pol = polarity || 'higher';
+      // 입력에서 찾기 (fitness or mechanics 둘 중)
+      let val = input.fitness[key];
+      if (val == null) val = input.mechanics[key];
+      if (val != null) {
+        const score = percentileOfCohort(key, val, pol);
+        if (score != null) {
+          allVarScores[key] = score;
+          scores.push(score);
+        }
+      }
+    }
+    if (scores.length > 0) {
+      let avg = scores.reduce((a,b) => a+b, 0) / scores.length;
+      // v29 카테고리별 산식 보정 적용
+      const offset = (COHORT.category_offsets && COHORT.category_offsets[catId]) || 0;
+      avg += offset;
+      // 연령군 보정 적용
+      avg = Math.max(0, Math.min(100, avg + adj.score_offset));
+      catScores[catId] = Math.round(avg * 10) / 10;
+    }
+  }
+  
+  // 2) 종합 점수
+  const fitCatScores = COHORT.fitness_cats.map(c => catScores[c]).filter(s => s != null);
+  const mechCatScores = COHORT.mechanics_cats.map(c => catScores[c]).filter(s => s != null);
+  const ctrlCatScores = COHORT.control_cats.map(c => catScores[c]).filter(s => s != null);
+  
+  const Fitness_Score = fitCatScores.length ? Math.round(fitCatScores.reduce((a,b)=>a+b,0)/fitCatScores.length * 10) / 10 : null;
+  const Mechanics_Score = mechCatScores.length ? Math.round(mechCatScores.reduce((a,b)=>a+b,0)/mechCatScores.length * 10) / 10 : null;
+  const Control_Score = ctrlCatScores.length ? Math.round(ctrlCatScores.reduce((a,b)=>a+b,0)/ctrlCatScores.length * 10) / 10 : null;
+  
+  // 3) 회귀로 PV, MV 계산 (연령군 구속 보정 포함)
+  const fr = COHORT.regression.fitness_to_velocity;
+  const mr = COHORT.regression.mechanics_to_velocity;
+  // 보정 전 점수로 계산
+  const fitRaw = fitCatScores.length ? fitCatScores.reduce((a,b)=>a+b,0)/fitCatScores.length - adj.score_offset : null;
+  const mechRaw = mechCatScores.length ? mechCatScores.reduce((a,b)=>a+b,0)/mechCatScores.length - adj.score_offset : null;
+  
+  const PV = fitRaw != null ? Math.round((fr.slope * fitRaw + fr.intercept + adj.velo_offset) * 10) / 10 : null;
+  const MV = mechRaw != null ? Math.round((mr.slope * mechRaw + mr.intercept + adj.velo_offset) * 10) / 10 : null;
+
+  // 4) 잠재 구속 — v29 산식 일치
+  //    측정 구속이 있으면: 본인 측정 구속 + 체력·메카닉 부족분 × 각 회귀 slope
+  //                        (= 체력·메카닉 100점화 시 추가 도달 구속)
+  //                        v29의 drvLineCeiling 패턴 (개인화 보정)
+  //    측정 구속이 없으면: 메카닉 절대 회귀 ceiling (mr.slope*100 + mr.intercept) — fallback
+  let ceiling = null;
+  if (measuredVelo != null && fitRaw != null && mechRaw != null) {
+    const fitGap  = Math.max(0, 100 - fitRaw);   // 체력 부족분
+    const mechGap = Math.max(0, 100 - mechRaw);  // 메카닉 부족분
+    ceiling = measuredVelo + fr.slope * fitGap + mr.slope * mechGap;
+  } else if (measuredVelo != null && mechRaw != null) {
+    // 체력 점수가 없을 때 — 메카닉만 보정
+    const mechGap = Math.max(0, 100 - mechRaw);
+    ceiling = measuredVelo + mr.slope * mechGap;
+  } else if (mechRaw != null) {
+    // 측정 구속 미입력 fallback — 절대 회귀
+    ceiling = mr.slope * 100 + mr.intercept + adj.velo_offset;
+  }
+  if (ceiling != null) ceiling = Math.round(ceiling * 10) / 10;
+
+  return {
+    age, adj,
+    var_scores: allVarScores,
+    cat_scores: catScores,
+    Fitness_Score, Mechanics_Score, Control_Score,
+    PV_predicted: PV,
+    MV_predicted: MV,
+    ceiling,
+    measuredVelo,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 리포트 렌더링
+// ════════════════════════════════════════════════════════════════════
+function generateReport() {
+  // 입력 변수 수 확인
+  const totalFit = Object.keys(CURRENT_INPUT.fitness).length;
+  const totalMech = Object.keys(CURRENT_INPUT.mechanics).length;
+  if (totalFit === 0 && totalMech === 0) {
+    alert('⚠️ 입력된 변수가 없습니다. 최소 1개 이상의 변수를 입력해주세요.');
+    return;
+  }
+  
+  const playerName = document.getElementById('player-name').value || '신규 선수';
+  const measuredVelo = parseFloat(document.getElementById('player-velo').value) || null;
+  const date = document.getElementById('player-date').value || '';
+  const result = calculateScores(CURRENT_INPUT, CURRENT_AGE, measuredVelo);
+  
+  const reportHtml = renderReportHtml(playerName, measuredVelo, date, result, totalFit, totalMech);
+  const area = document.getElementById('report-area');
+  area.innerHTML = reportHtml;
+  area.classList.remove('hidden');
+  // DOM에 캔버스가 박힌 후 레이더 차트 렌더
+  renderRadarCharts();
+  area.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── 레이더 차트 (Chart.js) ─────────────────────────────────────
+const _RADAR_INSTANCES = {};
+function renderRadarCharts() {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js가 로드되지 않았습니다. 인터넷 연결 또는 CDN 차단을 확인하세요.');
+    return;
+  }
+  const data = window.__BBL_RADAR_DATA__ || [];
+  for (const d of data) {
+    if (!d) continue;
+    const canvas = document.getElementById(d.canvasId);
+    if (!canvas) continue;
+    // 기존 인스턴스 파괴 (재렌더 대비)
+    if (_RADAR_INSTANCES[d.canvasId]) {
+      try { _RADAR_INSTANCES[d.canvasId].destroy(); } catch(e) {}
+    }
+    // 메카닉 카드는 현재 모드(6각형 BBL / 5각형 Driveline)에 따라 데이터 분기
+    const useDriveline = d.isMechanics && MECH_VIEW_MODE === '5';
+    const labels = useDriveline ? d.drivelineLabels : d.labels;
+    const values = useDriveline ? d.drivelineValues : d.values;
+    const playerLabel = useDriveline ? '선수 점수 (Driveline)' : '선수 점수';
+
+    _RADAR_INSTANCES[d.canvasId] = new Chart(canvas, {
+      type: 'radar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: '코호트 평균 (50)',
+            data: labels.map(() => 50),
+            backgroundColor: 'rgba(95,99,107,0.08)',
+            borderColor: 'rgba(95,99,107,0.4)',
+            borderWidth: 1,
+            borderDash: [3, 3],
+            pointRadius: 0,
+          },
+          {
+            label: playerLabel,
+            data: values,
+            backgroundColor: d.color + '33',  // ~20% 투명
+            borderColor: d.color,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: d.color,
+            pointBorderColor: '#0a0b0d',
+            pointBorderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            min: 0, max: 100,
+            ticks: { color: '#5f636b', stepSize: 25, backdropColor: 'transparent', font: { size: 9 } },
+            grid: { color: 'rgba(95,99,107,0.2)' },
+            angleLines: { color: 'rgba(95,99,107,0.3)' },
+            pointLabels: { color: '#b3b5b9', font: { size: 11 } },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#141518',
+            borderColor: '#2a2c31',
+            borderWidth: 1,
+            titleColor: '#e8e9ec',
+            bodyColor: '#b3b5b9',
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.r}`,
+            },
+          },
+        },
+      },
+    });
+  }
+}
+
+function renderReportHtml(name, measuredVelo, date, r, totalFit, totalMech) {
+  const fitRes = (measuredVelo != null && r.PV_predicted != null) ? measuredVelo - r.PV_predicted : null;
+  const mechRes = (measuredVelo != null && r.MV_predicted != null) ? measuredVelo - r.MV_predicted : null;
+  const growth = (r.ceiling != null && measuredVelo != null) ? r.ceiling - measuredVelo : 
+                 (r.ceiling != null && r.MV_predicted != null) ? r.ceiling - r.MV_predicted : null;
+  
+  // 강점/약점 (75 이상 / 40 이하 카테고리)
+  const allCats = [
+    ...COHORT.fitness_cats.map(c => ({id:c, area:'체력', score:r.cat_scores[c]})),
+    ...COHORT.mechanics_cats.map(c => ({id:c, area:'메카닉', score:r.cat_scores[c]})),
+    ...COHORT.control_cats.map(c => ({id:c, area:'제구', score:r.cat_scores[c]})),
+  ].filter(c => c.score != null);
+  
+  const strengths = allCats.filter(c => c.score >= 70).sort((a,b) => b.score - a.score).slice(0, 4);
+  const weaknesses = allCats.filter(c => c.score < 40).sort((a,b) => a.score - b.score).slice(0, 4);
+  
+  // 가장 약한 메카닉 (코칭 우선순위)
+  const lowestMech = COHORT.mechanics_cats
+    .map(c => ({id:c, score:r.cat_scores[c]}))
+    .filter(c => c.score != null)
+    .sort((a,b) => a.score - b.score)[0];
+  
+  // 활용도 한 줄 (잔차)
+  let utilLine = '';
+  if (fitRes != null && mechRes != null) {
+    const fitWord = fitRes >= 5 ? '효율 우수' : fitRes >= 1 ? '효율 양호' : fitRes >= -1 ? '평균적' : fitRes >= -5 ? '능력 미발휘' : '잠재력 잠금';
+    const mechWord = mechRes >= 5 ? '효율 우수' : mechRes >= 1 ? '효율 양호' : mechRes >= -1 ? '평균적' : mechRes >= -5 ? '능력 미발휘' : '잠재력 잠금';
+    const cls = (fitRes < -5 || mechRes < -5) ? 'bad' : (fitRes >= 5 || mechRes >= 5) ? 'good' : '';
+    utilLine = `<div class="summary-callout ${cls}">
+      <strong>신체 능력</strong>으로 보면 <strong>${r.PV_predicted?.toFixed(1)} km/h</strong>를 던질 만한 선수인데, 실제로는 <strong>${fitRes >= 0 ? '+' : ''}${fitRes.toFixed(1)} km/h</strong> ${fitRes >= 0 ? '더 잘' : '덜'} 던지고 있습니다 (${fitWord}).
+      <strong>투구 메카닉</strong>으로 보면 <strong>${r.MV_predicted?.toFixed(1)} km/h</strong>가 예상되는데, 실제로는 <strong>${mechRes >= 0 ? '+' : ''}${mechRes.toFixed(1)} km/h</strong> ${mechRes >= 0 ? '더 잘' : '덜'} 던지고 있습니다 (${mechWord}).
+    </div>`;
+  }
+  
+  // 헤더 — 5칸 직관 (측정 구속 / 체력 PV / 메카닉 MV / 잠재 / 활용도)
+  const header = `
+    <div class="card p-6 mb-6" style="border: 2px solid var(--accent);">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Player ID · ${r.age}</div>
+          <div class="display text-2xl mt-1">${name.toUpperCase()}</div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">${date} · ${totalFit + totalMech}개 변수 입력</div>
+        </div>
+        ${measuredVelo != null ? `
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">측정 구속</div>
+          <div class="display text-3xl mt-1">${measuredVelo.toFixed(1)}<span class="text-sm ml-1" style="color: var(--text-muted)">km/h</span></div>
+        </div>` : `
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">측정 구속</div>
+          <div class="display text-2xl mt-1 text-[var(--text-muted)]">미입력</div>
+        </div>`}
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">체력 기준 구속</div>
+          <div class="display text-3xl mt-1" style="color: var(--fitness)">${r.PV_predicted?.toFixed(1) ?? '—'}<span class="text-sm ml-1" style="color: var(--text-muted)">km/h</span></div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">체력 ${r.Fitness_Score ?? '—'}점</div>
+        </div>
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">메카닉 기준 구속</div>
+          <div class="display text-3xl mt-1" style="color: var(--accent)">${r.MV_predicted?.toFixed(1) ?? '—'}<span class="text-sm ml-1" style="color: var(--text-muted)">km/h</span></div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">메카닉 ${r.Mechanics_Score ?? '—'}점</div>
+        </div>
+        <div>
+          <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">잠재 구속</div>
+          <div class="display text-3xl mt-1" style="color: var(--warn)">${r.ceiling?.toFixed(1) ?? '—'}<span class="text-sm ml-1" style="color: var(--text-muted)">km/h</span></div>
+          ${growth != null ? `<div class="text-xs text-[var(--text-muted)] mt-1">성장 여지 +${growth.toFixed(1)} km/h</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  
+  // 종합 카드 3개 (체력·메카닉·제구) — 레이더 차트 포함
+  const sections = [
+    {key: 'Fitness_Score',   label: '체력',   cats: COHORT.fitness_cats,   color: 'var(--fitness)',  hex: '#60a5fa', radarId: 'radar-fit'},
+    {key: 'Mechanics_Score', label: '메카닉', cats: COHORT.mechanics_cats, color: 'var(--accent)',   hex: '#ff6b35', radarId: 'radar-mech'},
+    {key: 'Control_Score',   label: '제구',   cats: COHORT.control_cats,   color: 'var(--control)',  hex: '#c084fc', radarId: 'radar-ctrl'},
+  ];
+
+  // 차트 데이터 캐시 (innerHTML 이후 Chart.js 렌더링에 사용)
+  // 메카닉은 6각형(BBL) + 5각형(Driveline) 두 가지 데이터를 모두 저장 → 토글 시 교체
+  window.__BBL_RADAR_DATA__ = sections.map(sec => {
+    const score = r[sec.key];
+    if (score == null) return null;
+    const labels = sec.cats.map(c => (COHORT.category_meta[c]?.name) || c);
+    const values = sec.cats.map(c => r.cat_scores[c] != null ? Math.round(r.cat_scores[c]) : 0);
+    const data = { canvasId: sec.radarId, color: sec.hex, labels, values };
+    if (sec.key === 'Mechanics_Score') {
+      data.isMechanics = true;
+      const dvScores = drivelineFiveCatScores(r.var_scores || {});
+      data.drivelineLabels = DRIVELINE_5_ORDER.map(c => DRIVELINE_5_LABELS_KO[c]);
+      data.drivelineValues = DRIVELINE_5_ORDER.map(c => dvScores[c] != null ? Math.round(dvScores[c]) : 0);
+    }
+    return data;
+  });
+
+  const sectionsHtml = sections.map(sec => {
+    const score = r[sec.key];
+    if (score == null) return `<div class="card p-6">
+      <div class="display text-lg mb-2" style="color: ${sec.color}">${sec.label}</div>
+      <div class="text-sm text-[var(--text-muted)] py-12 text-center">변수 입력 부족 — 점수 산출 불가</div>
+    </div>`;
+
+    const catRows = sec.cats.map(catId => {
+      const meta = COHORT.category_meta[catId] || {};
+      const catScore = r.cat_scores[catId];
+      if (catScore == null) return `<div class="text-xs text-[var(--text-muted)] py-1">${meta.name}: 데이터 없음</div>`;
+      const w = Math.max(0, Math.min(100, catScore));
+      return `
+        <div class="py-2 border-b border-dashed border-[#2a2c31] last:border-0">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm">${meta.name}</span>
+            <span class="mono text-sm font-bold" style="color: ${scoreColor(catScore)}">${Math.round(catScore)}</span>
+          </div>
+          <div class="score-bar-container">
+            <div class="score-bar-fill" style="width: ${w}%; background: ${scoreColor(catScore)}"></div>
+          </div>
+          <div class="text-[10px] text-[var(--text-muted)] mt-1">${meta.short_desc || ''}</div>
+        </div>`;
+    }).join('');
+
+    // 메카닉 카드에만 5각/6각 토글 버튼 추가
+    const isMech = sec.key === 'Mechanics_Score';
+    const toggleHtml = isMech ? `
+      <div class="flex items-center justify-end gap-1 mb-2">
+        <span class="mono text-[10px] text-[var(--text-muted)] mr-1">VIEW</span>
+        <button id="mech-mode-6" class="mech-mode-btn ${MECH_VIEW_MODE==='6'?'active':''}" onclick="setMechMode('6')">6각 (BBL)</button>
+        <button id="mech-mode-5" class="mech-mode-btn ${MECH_VIEW_MODE==='5'?'active':''}" onclick="setMechMode('5')">5각 (Driveline)</button>
+      </div>` : '';
+
+    return `
+      <div class="card p-6">
+        <div class="flex justify-between items-end mb-4">
+          <div>
+            <div class="mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">SECTION</div>
+            <div class="display text-xl mt-1" style="color: ${sec.color}">${sec.label}</div>
+          </div>
+          <div class="text-right">
+            <div class="display text-4xl" style="color: ${scoreColor(score)}">${Math.round(score)}</div>
+            <div class="text-[10px] text-[var(--text-muted)] mono uppercase">/100</div>
+          </div>
+        </div>
+        ${toggleHtml}
+        <div class="mb-4 relative" style="height: 240px;">
+          <canvas id="${sec.radarId}"></canvas>
+        </div>
+        ${catRows}
+      </div>`;
+  }).join('');
+  
+  // 종합 평가 텍스트
+  const summary = `
+    <div class="card p-6 mt-6" style="background: linear-gradient(135deg, rgba(255,107,53,0.03) 0%, rgba(96,165,250,0.03) 100%); border: 1px solid rgba(255,107,53,0.15);">
+      <div class="display text-xl mb-4">📋 종합 평가 (선수·코치용 해설)</div>
+      
+      <p class="text-sm leading-relaxed mb-3">
+        <strong>${name}</strong> 선수는 <strong>${r.age}</strong> 기준으로 평가되었습니다.
+        ${measuredVelo != null ? `현재 측정 구속은 <strong>${measuredVelo.toFixed(1)} km/h</strong>이며, ` : ''}
+        체력 종합 <strong>${r.Fitness_Score ?? '—'}점</strong> · 메카닉 종합 <strong>${r.Mechanics_Score ?? '—'}점</strong> · 제구 종합 <strong>${r.Control_Score ?? '—'}점</strong>입니다.
+      </p>
+      
+      ${utilLine}
+      
+      ${r.ceiling != null ? `<p class="text-sm leading-relaxed mb-3">
+        ${measuredVelo != null
+          ? `현재 측정 구속 <strong>${measuredVelo.toFixed(1)} km/h</strong> 기준, 체력·메카닉을 100점까지 끌어올리면 <strong>${r.ceiling.toFixed(1)} km/h</strong>까지 도달 가능합니다.`
+          : `메카닉 점수를 100점까지 끌어올리면 <strong>${r.ceiling.toFixed(1)} km/h</strong>까지 도달 가능합니다 <span class="text-xs text-[var(--text-muted)]">(코호트 절대 회귀 기준 — 측정 구속 입력 시 더 정확)</span>.`}
+        ${growth != null ? `현재로부터 <strong>+${growth.toFixed(1)} km/h</strong>의 성장 여지가 있습니다.` : ''}
+      </p>` : ''}
+      
+      ${strengths.length ? `
+      <div class="mt-4">
+        <div class="text-sm font-bold mb-2">✅ 이 선수의 강점</div>
+        <ul class="list-none pl-0 space-y-1">
+          ${strengths.map(s => {
+            const meta = COHORT.category_meta[s.id] || {};
+            return `<li class="text-sm"><span class="text-[var(--good)]">●</span> <strong>${meta.name}</strong> (${s.area} ${Math.round(s.score)}점) — ${meta.short_desc || ''}</li>`;
+          }).join('')}
+        </ul>
+      </div>` : ''}
+      
+      ${weaknesses.length ? `
+      <div class="mt-4">
+        <div class="text-sm font-bold mb-2">⚠️ 보강이 필요한 영역</div>
+        <ul class="list-none pl-0 space-y-1">
+          ${weaknesses.map(s => {
+            const meta = COHORT.category_meta[s.id] || {};
+            return `<li class="text-sm"><span class="text-[var(--bad)]">●</span> <strong>${meta.name}</strong> (${s.area} ${Math.round(s.score)}점) — ${meta.short_desc || ''}</li>`;
+          }).join('')}
+        </ul>
+      </div>` : ''}
+      
+      ${lowestMech ? `
+      <div class="mt-4">
+        <div class="text-sm font-bold mb-2">🎯 다음 단계 권장</div>
+        <div class="text-sm leading-relaxed">
+          가장 낮은 메카닉 영역은 <strong>${COHORT.category_meta[lowestMech.id]?.name}</strong> (${Math.round(lowestMech.score)}점)입니다.
+          ${COHORT.category_meta[lowestMech.id]?.coaching || ''}
+        </div>
+      </div>` : ''}
+    </div>`;
+  
+  // 변수별 상세 (아코디언)
+  const detailsHtml = sections.map(sec => {
+    const cats = sec.cats;
+    return `
+      <details class="card p-4 mt-4">
+        <summary class="display text-base" style="color: ${sec.color}">${sec.label} 변수별 상세</summary>
+        <div class="mt-3">
+          ${cats.map(catId => {
+            const meta = COHORT.category_meta[catId] || {};
+            const vars = COHORT.category_vars[catId] || [];
+            const seen = new Set();
+            const rows = vars.filter(v => !seen.has(v[0]) && (seen.add(v[0]), true)).map(v => {
+              const [key, name, unit, dec, polarity] = v;
+              const inputVal = CURRENT_INPUT.fitness[key] ?? CURRENT_INPUT.mechanics[key];
+              const score = r.var_scores[key];
+              const w = score != null ? Math.max(0, Math.min(100, score)) : 0;
+              return `
+                <div class="var-row">
+                  <div>
+                    <div class="var-name">${name}</div>
+                    <div class="var-key">${key}</div>
+                  </div>
+                  <div class="var-raw">${inputVal != null ? inputVal.toFixed(dec || 2) + (unit ? ' ' + unit : '') : '—'}</div>
+                  <div>
+                    <div class="score-bar-container" style="width: 50px;">
+                      <div class="score-bar-fill" style="width: ${w}%; background: ${scoreColor(score)}"></div>
+                    </div>
+                  </div>
+                  <div class="var-score" style="color: ${scoreColor(score)}">${score != null ? Math.round(score) : '—'}</div>
+                </div>`;
+            }).join('');
+            if (!rows.trim()) return '';
+            return `
+              <div class="mt-3">
+                <div class="text-sm font-bold mb-2">${meta.name} <span class="text-xs text-[var(--text-muted)] font-normal">— ${meta.short_desc}</span></div>
+                ${rows}
+              </div>`;
+          }).join('')}
+        </div>
+      </details>`;
+  }).join('');
+  
+  // 다운로드 버튼
+  const downloadBtn = `
+    <div class="text-center mt-6">
+      <button class="btn btn-secondary" onclick="downloadHtmlReport()">📄 HTML 리포트 다운로드</button>
+      <button class="btn btn-secondary" onclick="window.print()">🖨 인쇄/PDF</button>
+    </div>`;
+  
+  return header + `<div class="grid grid-cols-1 md:grid-cols-3 gap-4">` + sectionsHtml + `</div>` + summary + detailsHtml + downloadBtn;
+}
+
+function downloadHtmlReport() {
+  const reportHtml = document.getElementById('report-area').innerHTML;
+  // 다운로드 시점의 메카닉 모드(6각형/5각형)를 반영해 데이터 고정
+  const radarData = (window.__BBL_RADAR_DATA__ || []).map(d => {
+    if (d && d.isMechanics && MECH_VIEW_MODE === '5') {
+      return { ...d, labels: d.drivelineLabels, values: d.drivelineValues };
+    }
+    return d;
+  });
+  const radarInitJs = `
+const __BBL_RADAR_DATA__ = ${JSON.stringify(radarData)};
+window.addEventListener('DOMContentLoaded', () => {
+  if (typeof Chart === 'undefined') return;
+  for (const d of __BBL_RADAR_DATA__) {
+    if (!d) continue;
+    const canvas = document.getElementById(d.canvasId);
+    if (!canvas) continue;
+    new Chart(canvas, {
+      type: 'radar',
+      data: { labels: d.labels, datasets: [
+        { label: '코호트 평균 (50)', data: d.labels.map(()=>50),
+          backgroundColor: 'rgba(95,99,107,0.08)', borderColor: 'rgba(95,99,107,0.4)',
+          borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+        { label: '선수 점수', data: d.values,
+          backgroundColor: d.color + '33', borderColor: d.color, borderWidth: 2,
+          pointRadius: 4, pointBackgroundColor: d.color,
+          pointBorderColor: '#0a0b0d', pointBorderWidth: 1 }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false,
+        scales: { r: { min: 0, max: 100,
+          ticks: { color: '#5f636b', stepSize: 25, backdropColor: 'transparent', font: { size: 9 } },
+          grid: { color: 'rgba(95,99,107,0.2)' },
+          angleLines: { color: 'rgba(95,99,107,0.3)' },
+          pointLabels: { color: '#b3b5b9', font: { size: 11 } } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+});`;
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BBL Report — ${(document.getElementById('player-name').value || '신규 선수')}</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>
+    <style>${document.querySelector('style').textContent}</style>
+    </head><body class="min-h-screen p-8">${reportHtml}
+    <script>${radarInitJs}<\/script>
+    </body></html>`;
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const name = document.getElementById('player-name').value || 'BBL_Report';
+  a.download = `${name}_report.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 초기화
+// ════════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  renderInputs();
+  selectAge('고교');
+  setupDropZone('fitness-drop-zone', 'fitness');
+  setupDropZone('mech-drop-zone', 'mechanics');
+});
+</script>
+
 </body>
 </html>
